@@ -1,0 +1,26 @@
+{
+  "name": "@asmr/backend",
+  "version": "1.0.0",
+  "description": "Firebase Functions (2nd Gen) serverless backend for AI Skin Coach",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "serve": "firebase emulators:start",
+    "test": "jest",
+    "test:rules": "jest --testPathPattern=rules.test.ts"
+  },
+  "dependencies": {
+    "@asmr/shared": "*",
+    "firebase-admin": "^13.1.0",
+    "firebase-functions": "^6.3.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.8.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.6.3"
+  }
+}

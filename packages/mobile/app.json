@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "ASMR Beauty Pro",
+    "slug": "asmr-beauty-pro",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FBF9F5"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.asmrbeauty.skincoach",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ASMR Beauty Pro uses your camera to capture standardized photos for cosmetic skin analysis and routine personalization. Photos are processed with ephemeral privacy controls.",
+        "NSPhotoLibraryUsageDescription": "Allows you to select product labels or progress photos."
+      },
+      "associatedDomains": [
+        "applinks:asmrbeauty.app"
+      ]
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FBF9F5"
+      },
+      "package": "com.asmrbeauty.skincoach",
+      "permissions": [
+        "CAMERA"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "asmrbeauty.app",
+              "pathPrefix": "/scan"
+            },
+            {
+              "scheme": "https",
+              "host": "asmrbeauty.app",
+              "pathPrefix": "/spot"
+            },
+            {
+              "scheme": "https",
+              "host": "asmrbeauty.app",
+              "pathPrefix": "/today"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-camera",
+      "expo-secure-store"
+    ],
+    "scheme": "asmrskin"
+  }
+}

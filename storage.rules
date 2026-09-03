@@ -1,0 +1,58 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    function isAuthenticated() {
+      return request.auth != null && request.auth.uid != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isImage() {
+      return request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+    
+    function isUnderSize(maxSizeMb) {
+      return request.resource.size < maxSizeMb * 1024 * 1024;
+    }
+    
+    // Deny all by default
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+    
+    // 1. Transient Skin Scan Uploads (Short-lived, deleted immediately after normalization)
+    match /transient-scans/{userId}/{scanId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+                   && isImage()
+                   && isUnderSize(10); // Max 10MB
+    }
+    
+    // 2. Progress Comparison Images (Explicit user consent, downscaled)
+    match /progress-photos/{userId}/{scanId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+                   && isImage()
+                   && isUnderSize(5); // Max 5MB
+      allow delete: if isOwner(userId);
+    }
+    
+    // 3. Spot Journal Images (Close-up visual tracking)
+    match /spot-journal/{userId}/{journalId}/{fileName} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId)
+                   && isImage()
+                   && isUnderSize(5); // Max 5MB
+      allow delete: if isOwner(userId);
+    }
+    
+    // 4. Public Catalog Assets
+    match /catalog/{fileName} {
+      allow read: if true;
+      allow write: if false; // Uploaded only by CI/CD admin credentials
+    }
+  }
+}
