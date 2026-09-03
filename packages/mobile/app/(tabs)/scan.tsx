@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { colors, spacing, typography, radii } from '../../src/theme/tokens.js';
-import { Card } from '../../src/components/Card.js';
-import { Button } from '../../src/components/Button.js';
-import { FocusBadge } from '../../src/components/FocusBadge.js';
-import { MetricGauge } from '../../src/components/MetricGauge.js';
-import { DisclaimerBar } from '../../src/components/DisclaimerBar.js';
+import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { Card } from '../../src/components/Card';
+import { Button } from '../../src/components/Button';
+import { FocusBadge } from '../../src/components/FocusBadge';
+import { MetricGauge } from '../../src/components/MetricGauge';
+import { DisclaimerBar } from '../../src/components/DisclaimerBar';
 
 type ScanFlowState = 'GUIDANCE' | 'PROCESSING' | 'SNAPSHOT_RESULT';
 

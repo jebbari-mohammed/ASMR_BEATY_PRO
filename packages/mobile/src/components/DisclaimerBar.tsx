@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, spacing, typography, radii } from '../theme/tokens.js';
+import { colors, spacing, typography, radii } from '../theme/tokens';
 
 interface DisclaimerBarProps {
   showAffiliate?: boolean;

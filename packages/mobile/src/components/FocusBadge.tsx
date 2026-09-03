@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { colors, radii, spacing, typography } from '../theme/tokens.js';
+import { colors, radii, spacing, typography } from '../theme/tokens';
 
 interface FocusBadgeProps {
   label: string;

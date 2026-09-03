@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
-import { colors, spacing, typography, radii } from '../../src/theme/tokens.js';
-import { Card } from '../../src/components/Card.js';
-import { DisclaimerBar } from '../../src/components/DisclaimerBar.js';
+import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { Card } from '../../src/components/Card';
+import { DisclaimerBar } from '../../src/components/DisclaimerBar';
 
 interface Message {
   id: string;
