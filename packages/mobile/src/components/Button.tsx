@@ -5,7 +5,7 @@ import { colors, radii, spacing, typography, shadows } from '../theme/tokens';
 interface ButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'gold' | 'outline' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'gold' | 'luxury' | 'outline' | 'ghost';
   loading?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
@@ -30,7 +30,7 @@ export const Button: React.FC<ButtonProps> = ({
         styles.base,
         variant === 'primary' && styles.primary,
         variant === 'secondary' && styles.secondary,
-        variant === 'gold' && styles.gold,
+        (variant === 'gold' || variant === 'luxury') && styles.gold,
         variant === 'outline' && styles.outline,
         variant === 'ghost' && styles.ghost,
         disabled && styles.disabled,
@@ -38,7 +38,7 @@ export const Button: React.FC<ButtonProps> = ({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'primary' || variant === 'gold' ? colors.textInverse : colors.primary} />
+        <ActivityIndicator color={variant === 'primary' || variant === 'gold' || variant === 'luxury' ? colors.textInverse : colors.primary} />
       ) : (
         <View style={styles.contentRow}>
           {icon && <View style={styles.iconContainer}>{icon}</View>}
@@ -47,7 +47,7 @@ export const Button: React.FC<ButtonProps> = ({
               typography.button,
               variant === 'primary' && styles.primaryText,
               variant === 'secondary' && styles.secondaryText,
-              variant === 'gold' && styles.goldText,
+              (variant === 'gold' || variant === 'luxury') && styles.goldText,
               variant === 'outline' && styles.outlineText,
               variant === 'ghost' && styles.ghostText,
               disabled && styles.disabledText
@@ -63,11 +63,36 @@ export const Button: React.FC<ButtonProps> = ({
 
 const styles = StyleSheet.create({
   base: {
-    paddingVertical: spacing.md + 2,
-    paddingHorizontal: spacing.xl,
+    height: 48,
     borderRadius: radii.full,
     alignItems: 'center',
-    justifyContent: 'center'
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl
+  },
+  primary: {
+    backgroundColor: colors.primary,
+    ...shadows.subtle
+  },
+  secondary: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.12)',
+    ...shadows.subtle
+  },
+  gold: {
+    backgroundColor: colors.goldDark,
+    ...shadows.subtle
+  },
+  outline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderColor: colors.primary
+  },
+  ghost: {
+    backgroundColor: 'transparent'
+  },
+  disabled: {
+    opacity: 0.45
   },
   contentRow: {
     flexDirection: 'row',
@@ -75,55 +100,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   iconContainer: {
-    marginRight: spacing.sm
-  },
-  primary: {
-    backgroundColor: colors.primary,
-    ...shadows.card
+    marginRight: spacing.xs
   },
   primaryText: {
-    color: colors.textInverse,
-    fontWeight: '700'
-  },
-  secondary: {
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: 'rgba(45, 86, 67, 0.15)'
+    color: colors.textInverse
   },
   secondaryText: {
-    color: colors.primary,
-    fontWeight: '600'
-  },
-  gold: {
-    backgroundColor: colors.gold,
-    ...shadows.card
+    color: colors.primary
   },
   goldText: {
-    color: colors.textInverse,
-    fontWeight: '700'
-  },
-  outline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: colors.border
+    color: colors.textInverse
   },
   outlineText: {
-    color: colors.textPrimary,
-    fontWeight: '600'
-  },
-  ghost: {
-    backgroundColor: 'transparent'
+    color: colors.primary
   },
   ghostText: {
-    color: colors.textSecondary
-  },
-  disabled: {
-    backgroundColor: colors.surfaceSecondary,
-    borderColor: 'transparent',
-    shadowOpacity: 0,
-    elevation: 0
+    color: colors.primary
   },
   disabledText: {
-    color: colors.textTertiary
+    color: colors.textSecondary
   }
 });

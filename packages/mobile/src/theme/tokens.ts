@@ -20,8 +20,9 @@ export const colors = {
   background: '#F9F8F5',        // Pure silk warm alabaster
   backgroundSecondary: '#F3EFEA',
   surface: '#FFFFFF',           // Crisp pearl card surface
+  surfaceSubtle: '#F5F2EC',     // Soft porcelain container
   surfaceTranslucent: 'rgba(255, 255, 255, 0.88)',
-  surfaceSecondary: '#F5F2EB',  // Soft porcelain container
+  surfaceSecondary: '#F5F2EB',
   surfaceElevated: '#FFFFFF',
   surfaceTwilight: '#131E18',   // Rich nocturnal green for PM routines
   surfaceTwilightCard: '#1C2B23',
@@ -44,6 +45,7 @@ export const colors = {
   // Borders & Dividers
   border: '#EAE5DC',
   borderLight: '#F2EEE7',
+  borderSubtle: 'rgba(26, 56, 43, 0.12)',
   borderGlass: 'rgba(255, 255, 255, 0.7)',
   borderDark: '#2C3D34',
 
@@ -92,6 +94,20 @@ export const typography = {
     lineHeight: 38,
     fontWeight: '700' as const,
     letterSpacing: -0.8,
+    color: colors.textPrimary
+  },
+  title1: {
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '700' as const,
+    letterSpacing: -0.4,
+    color: colors.textPrimary
+  },
+  title2: {
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '600' as const,
+    letterSpacing: -0.2,
     color: colors.textPrimary
   },
   h1: {
@@ -173,6 +189,13 @@ export const shadows = {
     shadowOpacity: 0.04,
     shadowRadius: 10,
     elevation: 2
+  },
+  medium: {
+    shadowColor: '#1A382B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 3
   },
   card: {
     shadowColor: '#1A382B',

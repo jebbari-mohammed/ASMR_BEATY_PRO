@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
+import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
-import { Button } from '../../src/components/Button';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
 
 type RoutineComplexity = 'MINIMAL' | 'ESSENTIAL' | 'ADVANCED';
@@ -112,7 +112,7 @@ export default function RoutineScreen() {
 
           <View style={styles.stepDivider} />
 
-          {/* Step 2 */}
+          {/* Step 2 with Real Packshot */}
           <View style={styles.stepItem}>
             <View style={styles.stepNumBadge}>
               <Text style={styles.stepNumText}>2</Text>
@@ -122,11 +122,14 @@ export default function RoutineScreen() {
                 <Text style={styles.stepCategory}>HYDRATE • LIPID RESTORATION</Text>
                 <Text style={styles.stepDuration}>30s</Text>
               </View>
-              <Text style={styles.stepTitle}>Barrier Recovery Moisturizer</Text>
+              <View style={styles.stepTitleRow}>
+                <Text style={styles.stepTitle}>Barrier Recovery Cream</Text>
+                <Image source={localImages.creamBottle} style={styles.stepThumb} />
+              </View>
               <Text style={styles.stepDesc}>Lightweight emulsion locking in hydration over damp skin.</Text>
               <View style={styles.ingredientRow}>
-                <Text style={styles.ingredientTag}>Ceramide NP</Text>
-                <Text style={styles.ingredientTag}>Niacinamide 2%</Text>
+                <Text style={styles.ingredientTag}>Ceramides NP/AP/EOP</Text>
+                <Text style={styles.ingredientTag}>Squalane</Text>
               </View>
             </View>
           </View>
@@ -180,7 +183,7 @@ export default function RoutineScreen() {
 
           <View style={styles.stepDivider} />
 
-          {/* Step 2 */}
+          {/* Step 2 with Real Packshot */}
           <View style={styles.stepItem}>
             <View style={styles.stepNumBadge}>
               <Text style={styles.stepNumText}>2</Text>
@@ -190,18 +193,21 @@ export default function RoutineScreen() {
                 <Text style={styles.stepCategory}>CALMING SERUM • TARGETED</Text>
                 <Text style={styles.stepDuration}>30s</Text>
               </View>
-              <Text style={styles.stepTitle}>Centella Calming Serum</Text>
+              <View style={styles.stepTitleRow}>
+                <Text style={styles.stepTitle}>Honey Botanical Calming Serum</Text>
+                <Image source={localImages.serumBottle} style={styles.stepThumb} />
+              </View>
               <Text style={styles.stepDesc}>3-4 drops pressed into flushed mid-cheek area.</Text>
               <View style={styles.ingredientRow}>
-                <Text style={styles.ingredientTag}>Centella Asiatica</Text>
-                <Text style={styles.ingredientTag}>Madecassoside</Text>
+                <Text style={styles.ingredientTag}>Propolis 83%</Text>
+                <Text style={styles.ingredientTag}>Centella</Text>
               </View>
             </View>
           </View>
 
           <View style={styles.stepDivider} />
 
-          {/* Step 3 */}
+          {/* Step 3 with Real Packshot */}
           <View style={styles.stepItem}>
             <View style={styles.stepNumBadge}>
               <Text style={styles.stepNumText}>3</Text>
@@ -211,7 +217,10 @@ export default function RoutineScreen() {
                 <Text style={styles.stepCategory}>NOCTURNAL RECOVERY</Text>
                 <Text style={styles.stepDuration}>30s</Text>
               </View>
-              <Text style={styles.stepTitle}>Barrier Recovery Moisturizer</Text>
+              <View style={styles.stepTitleRow}>
+                <Text style={styles.stepTitle}>Barrier Recovery Cream</Text>
+                <Image source={localImages.creamBottle} style={styles.stepThumb} />
+              </View>
               <Text style={styles.stepDesc}>Overnight lipid replenishment while transepidermal water loss peaks.</Text>
             </View>
           </View>
@@ -260,39 +269,37 @@ const styles = StyleSheet.create({
   },
   segmentedContainer: {
     flexDirection: 'row',
-    backgroundColor: colors.surfaceSecondary,
+    backgroundColor: 'rgba(26, 56, 43, 0.08)',
     borderRadius: radii.full,
     padding: 3,
-    marginBottom: spacing.base,
-    borderWidth: 1,
-    borderColor: 'rgba(234, 229, 220, 0.7)'
+    marginBottom: spacing.md
   },
   segmentButton: {
     flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.full,
+    paddingVertical: 8,
     alignItems: 'center',
-    justifyContent: 'center'
+    borderRadius: radii.full
   },
   segmentButtonActive: {
     backgroundColor: colors.surface,
     ...shadows.subtle
   },
   segmentText: {
+    ...typography.captionBold,
     fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    color: colors.textTertiary
+    color: colors.textSecondary,
+    letterSpacing: 0.8
   },
   segmentTextActive: {
-    color: colors.primary
+    color: colors.primary,
+    fontWeight: '700'
   },
   philosophyCard: {
     padding: 0,
     overflow: 'hidden',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(45, 86, 67, 0.15)'
+    borderColor: 'rgba(26, 56, 43, 0.08)'
   },
   philosophyGradient: {
     padding: spacing.base
@@ -302,46 +309,49 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start'
   },
   philosophyIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: radii.full,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
+    marginRight: spacing.sm + 2,
     ...shadows.subtle
   },
   philosophyTextWrap: {
     flex: 1
   },
   philosophyTitle: {
-    ...typography.bodyBold,
-    fontSize: 13,
+    ...typography.title2,
+    fontSize: 14,
+    fontWeight: '700',
     color: colors.primary,
     marginBottom: 2
   },
   philosophyDesc: {
     ...typography.caption,
     fontSize: 12,
-    lineHeight: 17,
-    color: colors.textSecondary
+    color: colors.textSecondary,
+    lineHeight: 16
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md
+    marginBottom: spacing.sm
   },
   sectionTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center'
   },
   sectionIcon: {
-    marginRight: spacing.xs + 2
+    marginRight: spacing.xs
   },
   sectionTitle: {
-    ...typography.h2,
-    fontSize: 18
+    ...typography.title2,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary
   },
   sectionMeta: {
     ...typography.caption,
@@ -349,26 +359,25 @@ const styles = StyleSheet.create({
     color: colors.textTertiary
   },
   stepsCard: {
-    padding: spacing.base,
-    marginBottom: spacing.base
+    padding: spacing.base
   },
   stepItem: {
     flexDirection: 'row',
     alignItems: 'flex-start'
   },
   stepNumBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: radii.full,
-    backgroundColor: colors.primarySoft,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(26, 56, 43, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md,
     marginTop: 2
   },
   stepNumText: {
+    ...typography.captionBold,
     fontSize: 12,
-    fontWeight: '800',
     color: colors.primary
   },
   stepContent: {
@@ -381,26 +390,42 @@ const styles = StyleSheet.create({
     marginBottom: 2
   },
   stepCategory: {
+    ...typography.captionBold,
     fontSize: 10,
-    fontWeight: '700',
     color: colors.goldDark,
     letterSpacing: 0.8
   },
   stepDuration: {
-    fontSize: 10,
-    fontWeight: '600',
+    ...typography.caption,
+    fontSize: 11,
     color: colors.textTertiary
   },
+  stepTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
   stepTitle: {
-    ...typography.bodyBold,
+    ...typography.title2,
     fontSize: 15,
-    marginBottom: 2
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2,
+    flex: 1
+  },
+  stepThumb: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.1)',
+    marginLeft: spacing.xs
   },
   stepDesc: {
     ...typography.caption,
     fontSize: 12,
-    lineHeight: 17,
     color: colors.textSecondary,
+    lineHeight: 16,
     marginBottom: spacing.xs
   },
   ingredientRow: {
@@ -408,42 +433,42 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap'
   },
   ingredientTag: {
+    ...typography.captionBold,
     fontSize: 10,
-    fontWeight: '600',
-    color: colors.primaryLight,
-    backgroundColor: colors.primarySoft,
-    paddingHorizontal: spacing.sm,
+    color: colors.primary,
+    backgroundColor: 'rgba(26, 56, 43, 0.05)',
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: radii.full,
-    marginRight: spacing.xs,
+    borderRadius: radii.xs,
+    marginRight: 4,
     marginTop: 2
   },
   stepDivider: {
     height: 1,
-    backgroundColor: colors.borderLight,
+    backgroundColor: 'rgba(26, 56, 43, 0.06)',
     marginVertical: spacing.md
   },
   safetyGuaranteeCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: colors.surfaceSecondary,
+    backgroundColor: 'rgba(26, 56, 43, 0.04)',
+    borderRadius: radii.md,
     padding: spacing.md,
-    borderRadius: radii.lg,
-    marginTop: spacing.base,
-    marginBottom: spacing.base,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: 'rgba(234, 229, 220, 0.6)'
+    borderColor: 'rgba(26, 56, 43, 0.08)'
   },
   safetyIcon: {
-    marginRight: spacing.sm,
-    marginTop: 1
+    marginRight: spacing.xs,
+    marginTop: 2
   },
   safetyText: {
     ...typography.caption,
-    flex: 1,
     fontSize: 12,
-    lineHeight: 17,
-    color: colors.textSecondary
+    color: colors.textSecondary,
+    lineHeight: 16,
+    flex: 1
   },
   boldSpan: {
     fontWeight: '700',

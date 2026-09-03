@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
+import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
@@ -44,7 +45,7 @@ export default function ProgressScreen() {
 
         {/* Milestone Timeline Carousel */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timelineScroll}>
-          {milestones.map((m, idx) => {
+          {milestones.map((m) => {
             const isSelected = selectedMilestone === m.day;
             const isCurrent = m.status === 'active';
             return (
@@ -72,6 +73,65 @@ export default function ProgressScreen() {
           })}
         </ScrollView>
 
+        {/* Standardized Real Macro Skin Comparison */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Macro Skin Evolution</Text>
+          <View style={styles.calibPill}>
+            <View style={styles.calibDot} />
+            <Text style={styles.calibText}>5200K MATCH</Text>
+          </View>
+        </View>
+
+        <Card variant="elevated" style={styles.compareCard}>
+          <View style={styles.compareRow}>
+            {/* Day 1 Baseline Photo */}
+            <View style={styles.compareSide}>
+              <View style={styles.photoContainer}>
+                <Image source={localImages.skinBefore} style={styles.compareImage} />
+                <View style={styles.photoBadgeBaseline}>
+                  <Text style={styles.photoBadgeText}>DAY 1 BASELINE</Text>
+                </View>
+              </View>
+              <View style={styles.photoInfo}>
+                <Text style={styles.photoDate}>Aug 21 • Initial</Text>
+                <Text style={styles.photoMetric}>Redness: 74 • Visible Pores</Text>
+              </View>
+            </View>
+
+            <View style={styles.compareDividerCol}>
+              <View style={styles.dividerLine} />
+              <View style={styles.versusBadge}>
+                <Text style={styles.versusText}>VS</Text>
+              </View>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Day 14 Current Photo */}
+            <View style={styles.compareSide}>
+              <View style={styles.photoContainer}>
+                <Image source={localImages.skinAfter} style={styles.compareImage} />
+                <View style={styles.photoBadgeCurrent}>
+                  <Ionicons name="sparkles" size={9} color={colors.textInverse} style={{ marginRight: 3 }} />
+                  <Text style={[styles.photoBadgeText, { color: colors.textInverse }]}>DAY 14 ACTIVE</Text>
+                </View>
+              </View>
+              <View style={styles.photoInfo}>
+                <Text style={styles.photoDate}>Sep 04 • Today</Text>
+                <Text style={[styles.photoMetric, { color: colors.routineDone, fontWeight: '600' }]}>
+                  Redness: 58 • Calmed Glow
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.lightingNotice}>
+            <Ionicons name="information-circle-outline" size={14} color={colors.textTertiary} />
+            <Text style={styles.lightingNoticeText}>
+              Standardized angle, focal distance & daylight spectrum ensure scientific appearance observation.
+            </Text>
+          </View>
+        </Card>
+
         {/* Skin Memory: "What Changed?" Card */}
         <Card variant="elevated" style={styles.memoryCard}>
           <LinearGradient
@@ -93,7 +153,7 @@ export default function ProgressScreen() {
                 <Ionicons name="trending-down" size={14} color={colors.routineDone} />
               </View>
               <Text style={styles.insightText}>
-                <Text style={styles.boldSpan}>Visible Redness:</Text> Noticeable reduction across the mid-cheeks compared to Day 1 baseline.
+                <Text style={styles.boldSpan}>Visible Redness:</Text> Reduced by 16 points across the mid-cheeks compared to Day 1 baseline.
               </Text>
             </View>
 
@@ -126,63 +186,8 @@ export default function ProgressScreen() {
           </LinearGradient>
         </Card>
 
-        {/* Standardized Visual Comparison */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Standardized Comparison</Text>
-          <Text style={styles.sectionMeta}>Normalized 5500K Lighting</Text>
-        </View>
-
-        <Card variant="elevated" style={styles.compareCard}>
-          <View style={styles.compareRow}>
-            {/* Day 1 */}
-            <View style={styles.compareSide}>
-              <View style={styles.photoContainer}>
-                <Ionicons name="person-outline" size={40} color={colors.textTertiary} />
-                <View style={styles.photoPill}>
-                  <Text style={styles.photoPillText}>DAY 1 • AUG 21</Text>
-                </View>
-              </View>
-              <Text style={styles.photoCaption}>Initial Baseline</Text>
-              <Text style={styles.photoSubCaption}>Slight visible flushing</Text>
-            </View>
-
-            <View style={styles.compareDivider}>
-              <View style={styles.vsBadge}>
-                <Text style={styles.vsText}>VS</Text>
-              </View>
-            </View>
-
-            {/* Day 14 */}
-            <View style={styles.compareSide}>
-              <View style={[styles.photoContainer, styles.photoContainerActive]}>
-                <Ionicons name="person" size={40} color={colors.primary} />
-                <View style={[styles.photoPill, styles.photoPillActive]}>
-                  <Text style={[styles.photoPillText, styles.photoPillTextActive]}>DAY 14 • CURRENT</Text>
-                </View>
-              </View>
-              <Text style={styles.photoCaption}>Current Milestone</Text>
-              <Text style={styles.photoSubCaption}>Calmer appearance</Text>
-            </View>
-          </View>
-        </Card>
-
-        {/* Adherence & Retention Stats */}
-        <View style={styles.statsGrid}>
-          <Card variant="subtle" style={styles.statCard}>
-            <Text style={styles.statNumber}>88%</Text>
-            <Text style={styles.statLabel}>Routine Adherence</Text>
-          </Card>
-          <Card variant="subtle" style={styles.statCard}>
-            <Text style={styles.statNumber}>12 / 42</Text>
-            <Text style={styles.statLabel}>Program Days</Text>
-          </Card>
-          <Card variant="subtle" style={styles.statCard}>
-            <Text style={styles.statNumber}>0</Text>
-            <Text style={styles.statLabel}>Reported Irritations</Text>
-          </Card>
-        </View>
-
-        <DisclaimerBar showAffiliate={false} />
+        {/* Non-Causality Scientific Disclaimer */}
+        <DisclaimerBar />
       </ScrollView>
     </View>
   );
@@ -201,7 +206,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.huge
   },
   headerSection: {
-    marginVertical: spacing.md
+    marginTop: spacing.xs,
+    marginBottom: spacing.md
   },
   title: {
     ...typography.display,
@@ -216,67 +222,204 @@ const styles = StyleSheet.create({
     lineHeight: 20
   },
   timelineScroll: {
-    marginBottom: spacing.xl,
-    paddingVertical: spacing.xs
+    marginBottom: spacing.lg
   },
   milestoneNode: {
     backgroundColor: colors.surface,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.base,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: radii.lg,
-    alignItems: 'center',
-    marginRight: spacing.md,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    minWidth: 88,
+    borderColor: 'rgba(26, 56, 43, 0.08)',
+    marginRight: spacing.sm,
+    alignItems: 'center',
+    minWidth: 78,
     ...shadows.subtle
   },
   milestoneNodeSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surface
+    borderColor: colors.goldDark,
+    backgroundColor: colors.surfaceSubtle
   },
   milestoneNodeCurrent: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryLight
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(26, 56, 43, 0.04)'
   },
   nodeIconWrap: {
     width: 28,
     height: 28,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 14,
+    backgroundColor: 'rgba(26, 56, 43, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.xs
+    marginBottom: 4
   },
   nodeIconWrapCurrent: {
     backgroundColor: colors.primary
   },
   nodeLabel: {
+    ...typography.captionBold,
     fontSize: 12,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 2
+    color: colors.textPrimary
   },
   nodeLabelSelected: {
     color: colors.primary
   },
   nodeDate: {
+    ...typography.caption,
     fontSize: 10,
     color: colors.textTertiary
   },
   nodeDateSelected: {
-    color: colors.primaryLight,
-    fontWeight: '600'
+    color: colors.textSecondary
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm
+  },
+  sectionTitle: {
+    ...typography.title2,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary
+  },
+  calibPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(26, 56, 43, 0.06)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.full
+  },
+  calibDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.routineDone,
+    marginRight: 4
+  },
+  calibText: {
+    ...typography.captionBold,
+    fontSize: 9,
+    color: colors.primary,
+    letterSpacing: 0.6
+  },
+  compareCard: {
+    padding: spacing.base,
+    marginBottom: spacing.lg
+  },
+  compareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  compareSide: {
+    flex: 1
+  },
+  photoContainer: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    position: 'relative',
+    ...shadows.subtle
+  },
+  compareImage: {
+    width: '100%',
+    height: '100%'
+  },
+  photoBadgeBaseline: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: 'rgba(19, 30, 24, 0.82)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: radii.sm
+  },
+  photoBadgeCurrent: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: radii.sm
+  },
+  photoBadgeText: {
+    ...typography.captionBold,
+    fontSize: 8.5,
+    color: colors.goldLight,
+    letterSpacing: 0.6
+  },
+  photoInfo: {
+    marginTop: spacing.xs
+  },
+  photoDate: {
+    ...typography.captionBold,
+    fontSize: 12,
+    color: colors.textPrimary
+  },
+  photoMetric: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 1
+  },
+  compareDividerCol: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm
+  },
+  dividerLine: {
+    width: 1,
+    height: 35,
+    backgroundColor: 'rgba(26, 56, 43, 0.12)'
+  },
+  versusBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.1)'
+  },
+  versusText: {
+    ...typography.captionBold,
+    fontSize: 10,
+    color: colors.primary
+  },
+  lightingNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.md,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(26, 56, 43, 0.06)'
+  },
+  lightingNoticeText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textTertiary,
+    marginLeft: 6,
+    flex: 1,
+    lineHeight: 15
   },
   memoryCard: {
     padding: 0,
     overflow: 'hidden',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.25)'
+    borderColor: 'rgba(197, 154, 111, 0.3)'
   },
   memoryCardGradient: {
-    padding: spacing.base + 2
+    padding: spacing.base
   },
   memoryTopRow: {
     flexDirection: 'row',
@@ -288,22 +431,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.3)'
+    ...shadows.subtle
   },
   memoryBadgeText: {
+    ...typography.captionBold,
     fontSize: 10,
-    fontWeight: '800',
     color: colors.goldDark,
     marginLeft: 4,
     letterSpacing: 0.8
   },
   memoryMeta: {
+    ...typography.caption,
     fontSize: 11,
-    fontWeight: '600',
     color: colors.textSecondary
   },
   insightItem: {
@@ -314,139 +456,23 @@ const styles = StyleSheet.create({
   insightIconWrap: {
     width: 24,
     height: 24,
-    borderRadius: radii.full,
+    borderRadius: 12,
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm,
     marginTop: 1,
-    borderWidth: 1,
-    borderColor: colors.borderLight
+    ...shadows.subtle
   },
   insightText: {
     ...typography.body,
-    flex: 1,
     fontSize: 13,
-    lineHeight: 19
+    color: colors.textPrimary,
+    flex: 1,
+    lineHeight: 18
   },
   boldSpan: {
     fontWeight: '700',
-    color: colors.textPrimary
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  sectionTitle: {
-    ...typography.h2,
-    fontSize: 18
-  },
-  sectionMeta: {
-    ...typography.caption,
-    fontSize: 12,
-    color: colors.textTertiary
-  },
-  compareCard: {
-    padding: spacing.base,
-    marginBottom: spacing.xl
-  },
-  compareRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  compareSide: {
-    flex: 1,
-    alignItems: 'center'
-  },
-  photoContainer: {
-    width: '100%',
-    height: 140,
-    borderRadius: radii.md,
-    backgroundColor: colors.surfaceSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    position: 'relative'
-  },
-  photoContainerActive: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryLight
-  },
-  photoPill: {
-    position: 'absolute',
-    bottom: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingVertical: 2,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radii.full
-  },
-  photoPillActive: {
-    backgroundColor: colors.primary
-  },
-  photoPillText: {
-    fontSize: 9,
-    fontWeight: '800',
-    letterSpacing: 0.6,
-    color: colors.textSecondary
-  },
-  photoPillTextActive: {
-    color: colors.textInverse
-  },
-  photoCaption: {
-    ...typography.bodyBold,
-    fontSize: 13
-  },
-  photoSubCaption: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textTertiary
-  },
-  compareDivider: {
-    width: 32,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  vsBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: radii.full,
-    backgroundColor: colors.surfaceSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border
-  },
-  vsText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.textTertiary
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.base
-  },
-  statCard: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 3,
-    paddingVertical: spacing.md
-  },
-  statNumber: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.primary,
-    marginBottom: 2
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textTertiary,
-    textAlign: 'center'
+    color: colors.primary
   }
 });

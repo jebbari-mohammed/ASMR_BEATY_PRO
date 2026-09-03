@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
+import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
@@ -18,7 +19,7 @@ export default function CoachScreen() {
     {
       id: 'm1',
       sender: 'coach',
-      text: "Hello! I'm your AI Skin Coach. I have your sensitive skin profile, your 3-step routine, and your Day 14 scan progress in memory. How can I support your skin today?",
+      text: "Hello! I'm your AI Skin Coach. I have your sensitive skin profile, your 3-step routine, and your Day 12 scan progress in memory. How can I support your skin today?",
       time: '10:00 AM'
     }
   ]);
@@ -77,12 +78,21 @@ export default function CoachScreen() {
     >
       <Header />
 
-      {/* Memory Grounding Pill Header */}
-      <View style={styles.groundingBar}>
-        <View style={styles.groundingDot} />
-        <Text style={styles.groundingText}>
-          GROUNDED MEMORY: Sensitive Baseline • 3-Step AM/PM • Zero Irritation
-        </Text>
+      {/* Memory Grounding Pill Header with Coach Profile */}
+      <View style={styles.coachHeaderCard}>
+        <Image source={localImages.coachPortrait} style={styles.coachHeaderAvatar} />
+        <View style={styles.coachHeaderDetails}>
+          <View style={styles.coachNameRow}>
+            <Text style={styles.coachName}>Sarah Jenkins</Text>
+            <View style={styles.verifiedBadge}>
+              <Ionicons name="checkmark-circle" size={13} color={colors.goldDark} />
+              <Text style={styles.verifiedText}>Aesthetic Director</Text>
+            </View>
+          </View>
+          <Text style={styles.coachSubtext}>
+            Grounded in: Sensitive Baseline • 3-Step Routine • Day 12 Scan
+          </Text>
+        </View>
       </View>
 
       <ScrollView
@@ -99,9 +109,7 @@ export default function CoachScreen() {
             ]}
           >
             {msg.sender === 'coach' && (
-              <View style={styles.coachAvatarMini}>
-                <Ionicons name="sparkles" size={14} color={colors.goldDark} />
-              </View>
+              <Image source={localImages.coachPortrait} style={styles.coachBubbleAvatar} />
             )}
 
             <View
@@ -139,43 +147,38 @@ export default function CoachScreen() {
               key={idx}
               activeOpacity={0.8}
               onPress={() => handleSend(chip.label)}
-              style={styles.chip}
+              style={styles.chipButton}
             >
-              <Ionicons name={chip.icon} size={13} color={colors.goldDark} style={{ marginRight: 4 }} />
+              <Ionicons name={chip.icon} size={14} color={colors.goldDark} style={styles.chipIcon} />
               <Text style={styles.chipText}>{chip.label}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      {/* Luxury Chat Input Bar */}
-      <View style={styles.inputBarContainer}>
+      {/* Chat Input Bar */}
+      <View style={styles.inputContainer}>
         <TextInput
-          style={styles.inputField}
+          style={styles.textInput}
           placeholder="Ask your Skin Coach..."
           placeholderTextColor={colors.textTertiary}
           value={inputText}
           onChangeText={setInputText}
-          onSubmitEditing={() => handleSend()}
+          multiline={false}
           returnKeyType="send"
+          onSubmitEditing={() => handleSend()}
         />
-
         <TouchableOpacity
-          style={[styles.sendButton, !!inputText.trim() && styles.sendButtonActive]}
           activeOpacity={0.8}
           onPress={() => handleSend()}
+          style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
+          disabled={!inputText.trim()}
         >
-          <Ionicons
-            name="arrow-up"
-            size={18}
-            color={colors.textInverse}
-          />
+          <Ionicons name="arrow-up" size={18} color={colors.textInverse} />
         </TouchableOpacity>
       </View>
 
-      <View style={{ paddingHorizontal: spacing.base }}>
-        <DisclaimerBar showAffiliate={false} />
-      </View>
+      <DisclaimerBar />
     </KeyboardAvoidingView>
   );
 }
@@ -185,34 +188,64 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background
   },
-  groundingBar: {
+  coachHeaderCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    paddingVertical: spacing.xs + 2,
+    backgroundColor: colors.surface,
     paddingHorizontal: spacing.base,
+    paddingVertical: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(234, 229, 220, 0.5)'
+    borderBottomColor: 'rgba(26, 56, 43, 0.08)',
+    ...shadows.subtle
   },
-  groundingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.routineDone,
-    marginRight: spacing.xs + 2
+  coachHeaderAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.goldDark,
+    marginRight: spacing.sm + 2
   },
-  groundingText: {
-    fontSize: 10,
+  coachHeaderDetails: {
+    flex: 1
+  },
+  coachNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2
+  },
+  coachName: {
+    ...typography.title2,
+    fontSize: 14,
     fontWeight: '700',
-    letterSpacing: 0.8,
-    color: colors.primary
+    color: colors.textPrimary,
+    marginRight: spacing.xs
+  },
+  verifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(197, 154, 111, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.full
+  },
+  verifiedText: {
+    ...typography.captionBold,
+    fontSize: 9,
+    color: colors.goldDark,
+    marginLeft: 3
+  },
+  coachSubtext: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textSecondary
   },
   messageScroll: {
     flex: 1
   },
   scrollContent: {
-    padding: spacing.base,
-    paddingBottom: spacing.sm
+    paddingHorizontal: spacing.base,
+    paddingVertical: spacing.md
   },
   messageRow: {
     flexDirection: 'row',
@@ -225,35 +258,31 @@ const styles = StyleSheet.create({
   messageRowCoach: {
     justifyContent: 'flex-start'
   },
-  coachAvatarMini: {
-    width: 28,
-    height: 28,
-    borderRadius: radii.full,
-    backgroundColor: colors.goldLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.xs + 2,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.3)',
+  coachBubbleAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: colors.goldDark,
+    marginRight: spacing.xs,
     marginBottom: 4
   },
   messageBubble: {
-    maxWidth: '82%',
-    paddingVertical: spacing.md - 2,
-    paddingHorizontal: spacing.base,
-    borderRadius: radii.lg
+    maxWidth: '78%',
+    borderRadius: radii.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    ...shadows.subtle
   },
   userBubble: {
     backgroundColor: colors.primary,
-    borderBottomRightRadius: radii.xs,
-    ...shadows.subtle
+    borderBottomRightRadius: radii.xs
   },
   coachBubble: {
     backgroundColor: colors.surface,
     borderBottomLeftRadius: radii.xs,
     borderWidth: 1,
-    borderColor: colors.borderLight,
-    ...shadows.subtle
+    borderColor: 'rgba(26, 56, 43, 0.08)'
   },
   userText: {
     color: colors.textInverse,
@@ -266,70 +295,75 @@ const styles = StyleSheet.create({
     lineHeight: 20
   },
   messageTime: {
+    ...typography.caption,
     fontSize: 10,
     marginTop: 4,
-    alignSelf: 'flex-end'
+    textAlign: 'right'
   },
   userTime: {
-    color: 'rgba(255, 255, 255, 0.6)'
+    color: 'rgba(255, 255, 255, 0.7)'
   },
   coachTime: {
     color: colors.textTertiary
   },
   chipsContainer: {
     paddingVertical: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(26, 56, 43, 0.06)',
     backgroundColor: colors.background
   },
   chipsScroll: {
     paddingHorizontal: spacing.base
   },
-  chip: {
+  chipButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    paddingVertical: spacing.xs + 2,
     paddingHorizontal: spacing.md,
+    paddingVertical: 7,
     borderRadius: radii.full,
-    marginRight: spacing.sm,
+    marginRight: spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.1)',
     ...shadows.subtle
+  },
+  chipIcon: {
+    marginRight: 6
   },
   chipText: {
+    ...typography.captionBold,
     fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary
+    color: colors.textPrimary
   },
-  inputBarContainer: {
+  inputContainer: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.base,
-    paddingVertical: spacing.xs + 2,
-    backgroundColor: colors.background,
-    alignItems: 'center'
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.background
   },
-  inputField: {
+  textInput: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
     borderRadius: radii.full,
-    paddingHorizontal: spacing.base,
-    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
     fontSize: 14,
     color: colors.textPrimary,
-    marginRight: spacing.sm,
-    ...shadows.subtle
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.12)',
+    marginRight: spacing.sm
   },
   sendButton: {
-    width: 38,
-    height: 38,
-    borderRadius: radii.full,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.subtle
   },
-  sendButtonActive: {
-    backgroundColor: colors.gold
+  sendButtonDisabled: {
+    opacity: 0.4
   }
 });

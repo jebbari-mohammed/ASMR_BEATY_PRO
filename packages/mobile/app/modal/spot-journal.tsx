@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
+import { localImages } from '../../src/theme/images';
 import { Card } from '../../src/components/Card';
 import { Button } from '../../src/components/Button';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
@@ -51,25 +52,34 @@ export default function SpotJournalModal() {
         ))}
       </View>
 
-      {/* Photo Capture Card */}
+      {/* Macro Photo Capture Card with Real Image & Reticle Overlays */}
       <Card variant="elevated" style={styles.photoCard}>
-        <View style={styles.cameraPlaceholder}>
-          <View style={styles.cameraCircle}>
-            <Ionicons name="camera-outline" size={32} color={colors.primary} />
+        <View style={styles.macroImgWrap}>
+          <Image source={localImages.spotMacro} style={styles.macroImg} />
+          
+          {/* Calibrated Reticle Overlay */}
+          <View style={styles.reticleCrosshair}>
+            <View style={styles.reticleCircle} />
+            <View style={styles.reticleLabelBox}>
+              <Text style={styles.reticleLabelText}>0.35 cm • Observational Target</Text>
+            </View>
           </View>
-          <Text style={styles.cameraTitle}>Capture Close-Up Macro</Text>
-          <Text style={styles.cameraSubtitle}>
-            Position the area in steady, shadow-free natural lighting.
-          </Text>
+
+          {/* Baseline Tag */}
+          <View style={styles.macroBadge}>
+            <Text style={styles.macroBadgeText}>DAY 1 BASELINE MACRO</Text>
+          </View>
         </View>
 
-        <Button
-          title="Take Focused Photo"
-          variant="primary"
-          icon={<Ionicons name="aperture-outline" size={18} color={colors.textInverse} />}
-          onPress={() => alert('Launching focused macro camera...')}
-          style={{ marginTop: spacing.md }}
-        />
+        <View style={styles.photoActions}>
+          <Button
+            title="Retake Focused Macro"
+            variant="secondary"
+            icon={<Ionicons name="camera-reverse-outline" size={16} color={colors.primary} />}
+            onPress={() => alert('Launching focused macro camera...')}
+            style={{ flex: 1 }}
+          />
+        </View>
       </Card>
 
       {/* Sensation / Tenderness Check */}
@@ -119,26 +129,47 @@ export default function SpotJournalModal() {
         <Text style={styles.sectionTitle}>Progression Milestones</Text>
       </View>
 
-      <Card variant="subtle" style={styles.scheduleCard}>
-        <View style={styles.milestoneRow}>
-          <Text style={styles.milestoneDot}>•</Text>
-          <Text style={styles.milestoneItem}><Text style={styles.boldSpan}>Day 1:</Text> Initial baseline photo</Text>
+      <Card variant="subtle" style={styles.milestonesCard}>
+        <View style={styles.milestoneItem}>
+          <View style={[styles.milestoneDot, styles.milestoneDotDone]} />
+          <View style={styles.milestoneContent}>
+            <Text style={styles.milestoneTitle}>Day 1: Initial baseline photo</Text>
+            <Text style={styles.milestoneSub}>Captured Aug 21 • Left Cheek (0.35cm)</Text>
+          </View>
         </View>
-        <View style={styles.milestoneRow}>
-          <Text style={styles.milestoneDot}>•</Text>
-          <Text style={styles.milestoneItem}><Text style={styles.boldSpan}>Day 3:</Text> First progression check-in</Text>
+
+        <View style={styles.milestoneDivider} />
+
+        <View style={styles.milestoneItem}>
+          <View style={[styles.milestoneDot, styles.milestoneDotActive]} />
+          <View style={styles.milestoneContent}>
+            <Text style={styles.milestoneTitle}>Day 3: Progression check-in</Text>
+            <Text style={styles.milestoneSub}>Scheduled in 18 hours</Text>
+          </View>
         </View>
-        <View style={styles.milestoneRow}>
-          <Text style={styles.milestoneDot}>•</Text>
-          <Text style={styles.milestoneItem}><Text style={styles.boldSpan}>Day 7:</Text> One-week milestone comparison</Text>
+
+        <View style={styles.milestoneDivider} />
+
+        <View style={styles.milestoneItem}>
+          <View style={styles.milestoneDot} />
+          <View style={styles.milestoneContent}>
+            <Text style={styles.milestoneTitle}>Day 7: Midpoint review</Text>
+            <Text style={styles.milestoneSub}>Assessing appearance stabilization</Text>
+          </View>
         </View>
-        <View style={styles.milestoneRow}>
-          <Text style={styles.milestoneDot}>•</Text>
-          <Text style={styles.milestoneItem}><Text style={styles.boldSpan}>Day 14:</Text> Two-week recovery review</Text>
+
+        <View style={styles.milestoneDivider} />
+
+        <View style={styles.milestoneItem}>
+          <View style={styles.milestoneDot} />
+          <View style={styles.milestoneContent}>
+            <Text style={styles.milestoneTitle}>Day 14: Final consistency comparison</Text>
+            <Text style={styles.milestoneSub}>Full side-by-side retrospective</Text>
+          </View>
         </View>
       </Card>
 
-      <DisclaimerBar showAffiliate={false} />
+      <DisclaimerBar />
     </ScrollView>
   );
 }
@@ -149,23 +180,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background
   },
   content: {
-    padding: spacing.base,
+    paddingHorizontal: spacing.base,
     paddingBottom: spacing.huge
   },
   headerSection: {
-    marginBottom: spacing.base
+    marginTop: spacing.md,
+    marginBottom: spacing.md
   },
   title: {
     ...typography.display,
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 32,
     marginTop: spacing.xxs,
     marginBottom: spacing.xs
   },
   subtitle: {
     ...typography.body,
-    fontSize: 14,
-    lineHeight: 20
+    fontSize: 13,
+    lineHeight: 18
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -174,12 +206,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm
   },
   sectionTitle: {
-    ...typography.h3,
-    fontSize: 16
+    ...typography.title2,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary
   },
   sectionMeta: {
     ...typography.caption,
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textTertiary
   },
   regionGrid: {
@@ -191,13 +225,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    paddingVertical: spacing.xs + 3,
     paddingHorizontal: spacing.md,
+    paddingVertical: 7,
     borderRadius: radii.full,
     marginRight: spacing.xs,
     marginBottom: spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.1)',
     ...shadows.subtle
   },
   regionChipActive: {
@@ -205,41 +239,77 @@ const styles = StyleSheet.create({
     borderColor: colors.primary
   },
   regionText: {
+    ...typography.captionBold,
     fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary
+    color: colors.textPrimary
   },
   regionTextActive: {
     color: colors.textInverse
   },
   photoCard: {
-    padding: spacing.xl,
-    alignItems: 'center',
-    marginBottom: spacing.base
-  },
-  cameraPlaceholder: {
-    alignItems: 'center',
-    marginBottom: spacing.sm
-  },
-  cameraCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: radii.full,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    padding: 0,
+    overflow: 'hidden',
     marginBottom: spacing.md
   },
-  cameraTitle: {
-    ...typography.h3,
-    fontSize: 17,
-    marginBottom: 2
+  macroImgWrap: {
+    width: '100%',
+    height: 240,
+    position: 'relative'
   },
-  cameraSubtitle: {
-    ...typography.caption,
-    fontSize: 13,
-    color: colors.textSecondary,
-    textAlign: 'center'
+  macroImg: {
+    width: '100%',
+    height: '100%'
+  },
+  reticleCrosshair: {
+    position: 'absolute',
+    top: '56%',
+    left: '49%',
+    transform: [{ translateX: -80 }, { translateY: -22 }],
+    alignItems: 'center'
+  },
+  reticleCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: colors.goldLight,
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(197, 154, 111, 0.15)'
+  },
+  reticleLabelBox: {
+    backgroundColor: 'rgba(19, 30, 24, 0.85)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.sm,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.4)'
+  },
+  reticleLabelText: {
+    ...typography.captionBold,
+    fontSize: 9,
+    color: colors.goldLight,
+    letterSpacing: 0.5
+  },
+  macroBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    backgroundColor: 'rgba(19, 30, 24, 0.82)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.3)'
+  },
+  macroBadgeText: {
+    ...typography.captionBold,
+    fontSize: 9,
+    color: colors.goldLight,
+    letterSpacing: 0.8
+  },
+  photoActions: {
+    padding: spacing.sm + 2
   },
   tendernessRow: {
     flexDirection: 'row',
@@ -248,81 +318,93 @@ const styles = StyleSheet.create({
   tendernessBtn: {
     flex: 1,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: 10,
+    borderRadius: radii.md,
     alignItems: 'center',
-    borderRadius: radii.lg,
-    marginHorizontal: 3,
+    marginRight: spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.1)',
     ...shadows.subtle
   },
   tendernessBtnActive: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primaryLight
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   tendernessBtnSevere: {
-    backgroundColor: colors.terracottaLight,
+    backgroundColor: colors.terracotta,
     borderColor: colors.terracotta
   },
   tendernessText: {
+    ...typography.captionBold,
     fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary
+    color: colors.textPrimary
   },
   tendernessTextActive: {
-    color: colors.primary,
-    fontWeight: '700'
+    color: colors.textInverse
   },
   tendernessTextSevere: {
-    color: colors.terracotta,
-    fontWeight: '700'
+    color: colors.textInverse
   },
   escalationCard: {
-    backgroundColor: colors.terracottaLight,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.terracotta,
-    padding: spacing.base,
-    marginBottom: spacing.base
+    backgroundColor: 'rgba(194, 91, 78, 0.08)',
+    borderColor: 'rgba(194, 91, 78, 0.25)',
+    borderWidth: 1,
+    marginBottom: spacing.md
   },
   escalationHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.xs
+    marginBottom: spacing.xxs
   },
   escalationTitle: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
+    ...typography.eyebrow,
     color: colors.terracotta,
     marginLeft: 6
   },
   escalationBody: {
-    ...typography.caption,
+    ...typography.body,
     fontSize: 12,
-    lineHeight: 18,
-    color: colors.textPrimary
+    color: colors.textPrimary,
+    lineHeight: 17
   },
-  scheduleCard: {
-    padding: spacing.base,
-    marginBottom: spacing.xl
-  },
-  milestoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.xs + 2
-  },
-  milestoneDot: {
-    fontSize: 16,
-    color: colors.goldDark,
-    marginRight: spacing.sm
+  milestonesCard: {
+    padding: spacing.md
   },
   milestoneItem: {
-    ...typography.caption,
-    fontSize: 13,
-    color: colors.textSecondary
+    flexDirection: 'row',
+    alignItems: 'center'
   },
-  boldSpan: {
-    fontWeight: '700',
+  milestoneDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.borderSubtle,
+    marginRight: spacing.md
+  },
+  milestoneDotDone: {
+    backgroundColor: colors.primary
+  },
+  milestoneDotActive: {
+    backgroundColor: colors.goldDark
+  },
+  milestoneContent: {
+    flex: 1
+  },
+  milestoneTitle: {
+    ...typography.title2,
+    fontSize: 13,
+    fontWeight: '600',
     color: colors.textPrimary
+  },
+  milestoneSub: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textTertiary,
+    marginTop: 1
+  },
+  milestoneDivider: {
+    height: 1,
+    backgroundColor: 'rgba(26, 56, 43, 0.06)',
+    marginVertical: spacing.sm
   }
 });

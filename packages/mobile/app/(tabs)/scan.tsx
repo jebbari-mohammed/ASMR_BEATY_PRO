@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
+import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
 import { Button } from '../../src/components/Button';
@@ -46,19 +47,25 @@ export default function ScanScreen() {
               Position your face in soft, diffused lighting with a relaxed expression. Remove eyewear for optimal calibration.
             </Text>
 
-            {/* High-Tech Luxury Viewfinder */}
+            {/* High-Tech Luxury Viewfinder with Real Camera Preview */}
             <View style={styles.viewfinderCard}>
               <View style={styles.viewfinderOval}>
+                <Image source={localImages.scanPortrait} style={styles.viewfinderImg} />
+                
                 {/* Corner brackets */}
                 <View style={[styles.cornerBracket, styles.cornerTopLeft]} />
                 <View style={[styles.cornerBracket, styles.cornerTopRight]} />
                 <View style={[styles.cornerBracket, styles.cornerBottomLeft]} />
                 <View style={[styles.cornerBracket, styles.cornerBottomRight]} />
 
-                <Ionicons name="scan-outline" size={48} color={colors.goldDark} style={styles.scanIcon} />
-                <Text style={styles.viewfinderHint}>Align face within golden ratio frame</Text>
-                
-                <View style={styles.laserLine} />
+                {/* Reticle Overlay */}
+                <View style={styles.reticleOverlay}>
+                  <View style={styles.laserLine} />
+                  <View style={styles.alignmentBadge}>
+                    <Ionicons name="checkmark-circle" size={13} color={colors.routineDone} />
+                    <Text style={styles.alignmentBadgeText}>98% FRAMING MATCH • OPTIMAL</Text>
+                  </View>
+                </View>
               </View>
             </View>
 
@@ -128,12 +135,64 @@ export default function ScanScreen() {
           <View>
             {/* Header */}
             <View style={styles.headerSection}>
-              <Text style={typography.eyebrow}>COSMETIC BASELINE • DAY 12 OF 42</Text>
-              <Text style={styles.snapshotTitle}>Skin Snapshot</Text>
+              <View style={styles.headerRow}>
+                <View>
+                  <Text style={typography.eyebrow}>COSMETIC BASELINE • DAY 12 OF 42</Text>
+                  <Text style={styles.snapshotTitle}>Skin Snapshot</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.rescanBtn}
+                  onPress={() => setFlowState('GUIDANCE')}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="camera-reverse-outline" size={16} color={colors.primary} style={{ marginRight: 4 }} />
+                  <Text style={styles.rescanBtnText}>New Scan</Text>
+                </TouchableOpacity>
+              </View>
               <Text style={styles.snapshotSubtitle}>
                 Calibrated visible skin appearance dimensions and your top 3 personalized focus areas.
               </Text>
             </View>
+
+            {/* Real Biometric Face Capture Card with AI Feature Tags */}
+            <Card variant="elevated" style={styles.faceCaptureCard}>
+              <View style={styles.faceCaptureImgWrap}>
+                <Image source={localImages.scanPortrait} style={styles.faceCaptureImg} resizeMode="cover" />
+                
+                {/* Calibration Banner */}
+                <View style={styles.calibrationOverlay}>
+                  <View style={styles.calibPill}>
+                    <View style={styles.calibDot} />
+                    <Text style={styles.calibText}>CALIBRATED 5200K DAYLIGHT • 98% MATCH</Text>
+                  </View>
+                </View>
+
+                {/* AI Detection Feature Markers */}
+                <View style={[styles.aiMarker, { top: '38%', left: '20%' }]}>
+                  <View style={styles.markerDot} />
+                  <View style={styles.markerCard}>
+                    <Text style={styles.markerTitle}>Visible Redness</Text>
+                    <Text style={styles.markerScore}>Score: 74 • Mid-Cheek</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.aiMarker, { top: '48%', right: '22%' }]}>
+                  <View style={styles.markerDot} />
+                  <View style={styles.markerCard}>
+                    <Text style={styles.markerTitle}>Pore Balance</Text>
+                    <Text style={styles.markerScore}>Score: 82 • Normalizing</Text>
+                  </View>
+                </View>
+
+                <View style={[styles.aiMarker, { top: '22%', right: '28%' }]}>
+                  <View style={styles.markerDot} />
+                  <View style={styles.markerCard}>
+                    <Text style={styles.markerTitle}>Hydration Gloss</Text>
+                    <Text style={styles.markerScore}>Score: 86 • Steady</Text>
+                  </View>
+                </View>
+              </View>
+            </Card>
 
             {/* Overall Score Dial Card */}
             <Card variant="elevated" style={styles.dialCard}>
@@ -152,7 +211,7 @@ export default function ScanScreen() {
                     <Text style={styles.dialEyebrow}>OVERALL COSMETIC BALANCE</Text>
                     <Text style={styles.dialHeadline}>Healthy Barrier Function</Text>
                     <Text style={styles.dialSummary}>
-                      Surface hydration is steady. Focus on calming slight cheek flushing.
+                      Surface hydration is steady. Focus on calming slight cheek flushing with gentle barrier ceramides.
                     </Text>
                   </View>
                 </View>
@@ -218,31 +277,15 @@ export default function ScanScreen() {
 
             <Card variant="elevated" style={styles.metricsCard}>
               <MetricGauge label="Redness Appearance" score={74} description="Surface warmth predominantly visible on cheeks" />
-              <MetricGauge label="Visible Blemishes" score={82} description="A few minor localized spots noted" />
-              <MetricGauge label="Texture Smoothness" score={86} description="Surface appears largely hydrated and smooth" />
-              <MetricGauge label="Pore Appearance" score={79} description="Definition concentrated around central nose" />
-              <MetricGauge label="Shine & Oiliness" score={80} description="Balanced natural sebum appearance" />
-              <MetricGauge label="Tone Uniformity" score={84} description="Uniform tone appearance across primary facial planes" />
+              <View style={styles.gaugeDivider} />
+              <MetricGauge label="Texture Smoothness" score={85} description="Fine skin grain, balanced cosmetic feel" />
+              <View style={styles.gaugeDivider} />
+              <MetricGauge label="Pore Visibility" score={82} description="Moderate definition in central nasal bridge" />
+              <View style={styles.gaugeDivider} />
+              <MetricGauge label="Surface Hydration" score={86} description="Plump, dewy moisture barrier retention" />
             </Card>
 
-            {/* Actions */}
-            <View style={styles.actionButtonGroup}>
-              <Button
-                title="Apply Focus to My Routine"
-                variant="primary"
-                icon={<Ionicons name="sparkles" size={16} color={colors.textInverse} />}
-                onPress={() => alert('Routine updated to align with your top focus areas.')}
-              />
-              <Button
-                title="Take New Scan Photo"
-                variant="outline"
-                icon={<Ionicons name="camera-outline" size={16} color={colors.textPrimary} />}
-                onPress={() => setFlowState('GUIDANCE')}
-                style={{ marginTop: spacing.sm }}
-              />
-            </View>
-
-            <DisclaimerBar showAffiliate={false} />
+            <DisclaimerBar />
           </View>
         )}
       </ScrollView>
@@ -262,258 +305,145 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.huge
   },
-  headerSection: {
-    marginVertical: spacing.md
+  guidanceSection: {
+    paddingTop: spacing.xs
   },
-  snapshotTitle: {
+  guidanceTitle: {
     ...typography.display,
     fontSize: 28,
     lineHeight: 34,
     marginTop: spacing.xxs,
     marginBottom: spacing.xs
   },
-  snapshotSubtitle: {
-    ...typography.body,
-    fontSize: 14,
-    lineHeight: 20
-  },
-  dialCard: {
-    padding: 0,
-    overflow: 'hidden',
-    marginBottom: spacing.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.25)'
-  },
-  dialGradient: {
-    padding: spacing.base + 2
-  },
-  dialContent: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  dialScoreContainer: {
-    width: 74,
-    height: 74,
-    borderRadius: radii.full,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.base,
-    borderWidth: 2,
-    borderColor: colors.gold,
-    ...shadows.subtle
-  },
-  dialScore: {
-    fontSize: 26,
-    fontWeight: '800',
-    color: colors.primary
-  },
-  dialScoreMax: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: colors.textTertiary,
-    marginTop: -2
-  },
-  dialTextWrap: {
-    flex: 1
-  },
-  dialEyebrow: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    color: colors.goldDark
-  },
-  dialHeadline: {
-    ...typography.h3,
-    fontSize: 16,
-    color: colors.textPrimary,
-    marginTop: 2
-  },
-  dialSummary: {
-    ...typography.caption,
-    fontSize: 12,
-    color: colors.textSecondary,
-    marginTop: 2
-  },
-  focusHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  sectionHeaderTitle: {
-    ...typography.h2,
-    fontSize: 18
-  },
-  sectionHeaderMeta: {
-    ...typography.caption,
-    fontSize: 12,
-    color: colors.textTertiary
-  },
-  focusListCard: {
-    padding: spacing.base,
-    marginBottom: spacing.xl
-  },
-  focusItem: {
-    marginVertical: spacing.xs
-  },
-  focusItemTitle: {
-    ...typography.bodyBold,
-    fontSize: 15,
-    marginTop: spacing.xs + 2,
-    marginBottom: 2
-  },
-  focusItemDesc: {
-    ...typography.caption,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textSecondary
-  },
-  solutionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm + 2,
-    borderRadius: radii.full,
-    alignSelf: 'flex-start',
-    marginTop: spacing.sm
-  },
-  solutionPillText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginLeft: 4
-  },
-  focusDivider: {
-    height: 1,
-    backgroundColor: colors.borderLight,
-    marginVertical: spacing.md
-  },
-  metricsCard: {
-    padding: spacing.base,
-    marginBottom: spacing.xl
-  },
-  actionButtonGroup: {
-    marginBottom: spacing.base
-  },
-  guidanceSection: {
-    paddingTop: spacing.md
-  },
-  guidanceTitle: {
-    ...typography.display,
-    fontSize: 28,
-    marginTop: spacing.xxs,
-    marginBottom: spacing.xs
-  },
   guidanceBody: {
     ...typography.body,
     fontSize: 14,
-    lineHeight: 21,
+    lineHeight: 20,
     marginBottom: spacing.lg
   },
   viewfinderCard: {
+    backgroundColor: colors.surfaceTwilight,
+    borderRadius: radii.xl,
+    padding: spacing.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    paddingVertical: spacing.xxl,
-    borderRadius: radii.xl,
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-    marginBottom: spacing.xl
+    marginBottom: spacing.lg,
+    ...shadows.medium
   },
   viewfinderOval: {
-    width: 200,
-    height: 270,
-    borderRadius: 100,
-    borderWidth: 1.5,
-    borderColor: colors.gold,
-    borderStyle: 'dashed',
+    width: 250,
+    height: 310,
+    borderRadius: 125,
+    borderWidth: 2,
+    borderColor: 'rgba(197, 154, 111, 0.7)',
+    overflow: 'hidden',
+    position: 'relative',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.base,
-    position: 'relative'
+    justifyContent: 'center'
+  },
+  viewfinderImg: {
+    width: '100%',
+    height: '100%'
+  },
+  reticleOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: spacing.md
   },
   cornerBracket: {
     position: 'absolute',
-    width: 18,
-    height: 18,
-    borderColor: colors.primary,
-    borderWidth: 2
+    width: 22,
+    height: 22,
+    borderColor: colors.goldDark,
+    zIndex: 10
   },
   cornerTopLeft: {
-    top: -10,
-    left: -10,
-    borderRightWidth: 0,
-    borderBottomWidth: 0
+    top: 18,
+    left: 18,
+    borderTopWidth: 3,
+    borderLeftWidth: 3
   },
   cornerTopRight: {
-    top: -10,
-    right: -10,
-    borderLeftWidth: 0,
-    borderBottomWidth: 0
+    top: 18,
+    right: 18,
+    borderTopWidth: 3,
+    borderRightWidth: 3
   },
   cornerBottomLeft: {
-    bottom: -10,
-    left: -10,
-    borderRightWidth: 0,
-    borderTopWidth: 0
+    bottom: 18,
+    left: 18,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3
   },
   cornerBottomRight: {
-    bottom: -10,
-    right: -10,
-    borderLeftWidth: 0,
-    borderTopWidth: 0
-  },
-  scanIcon: {
-    marginBottom: spacing.sm
-  },
-  viewfinderHint: {
-    ...typography.captionBold,
-    fontSize: 12,
-    textAlign: 'center',
-    color: colors.goldDark
+    bottom: 18,
+    right: 18,
+    borderBottomWidth: 3,
+    borderRightWidth: 3
   },
   laserLine: {
     position: 'absolute',
-    width: '80%',
-    height: 2,
-    backgroundColor: colors.gold,
-    top: '45%'
+    top: '45%',
+    left: 20,
+    right: 20,
+    height: 1.5,
+    backgroundColor: colors.goldLight,
+    opacity: 0.8
+  },
+  alignmentBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(19, 30, 24, 0.85)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.4)'
+  },
+  alignmentBadgeText: {
+    ...typography.captionBold,
+    fontSize: 9,
+    color: colors.goldLight,
+    marginLeft: 4,
+    letterSpacing: 0.6
   },
   checklistCard: {
     padding: spacing.base
   },
   checklistTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
+    ...typography.eyebrow,
     color: colors.primary,
     marginBottom: spacing.md
   },
   checkRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm + 2
+    marginBottom: spacing.sm
   },
   checkBadgeDone: {
     width: 20,
     height: 20,
-    borderRadius: radii.full,
-    backgroundColor: colors.routineDone,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.sm
   },
   checkText: {
-    ...typography.body,
+    ...typography.caption,
     fontSize: 13,
-    color: colors.textSecondary
+    color: colors.textPrimary,
+    flex: 1
   },
   cancelLink: {
-    marginTop: spacing.md,
     alignItems: 'center',
-    padding: spacing.sm
+    marginTop: spacing.md,
+    paddingVertical: spacing.xs
   },
   cancelLinkText: {
     ...typography.captionBold,
@@ -521,30 +451,267 @@ const styles = StyleSheet.create({
     fontSize: 13
   },
   processingSection: {
+    paddingVertical: spacing.huge * 2,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.huge * 2
+    justifyContent: 'center'
   },
   processingSpinnerWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: radii.full,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.xl
+    marginBottom: spacing.lg
   },
   processingTitle: {
-    ...typography.h2,
-    fontSize: 18,
+    ...typography.title1,
+    fontSize: 20,
     textAlign: 'center',
     marginBottom: spacing.sm
   },
   processingNote: {
     ...typography.caption,
-    fontSize: 12,
-    color: colors.textTertiary,
     textAlign: 'center',
-    paddingHorizontal: spacing.xl
+    color: colors.textSecondary,
+    maxWidth: 280,
+    lineHeight: 18
+  },
+  headerSection: {
+    marginTop: spacing.xs,
+    marginBottom: spacing.md
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start'
+  },
+  rescanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.12)',
+    ...shadows.subtle
+  },
+  rescanBtnText: {
+    ...typography.captionBold,
+    fontSize: 11,
+    color: colors.primary
+  },
+  snapshotTitle: {
+    ...typography.display,
+    fontSize: 28,
+    lineHeight: 34,
+    marginTop: spacing.xxs
+  },
+  snapshotSubtitle: {
+    ...typography.body,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 4
+  },
+  faceCaptureCard: {
+    padding: 0,
+    overflow: 'hidden',
+    borderRadius: radii.xl,
+    marginBottom: spacing.md,
+    ...shadows.medium
+  },
+  faceCaptureImgWrap: {
+    width: '100%',
+    height: 320,
+    position: 'relative'
+  },
+  faceCaptureImg: {
+    width: '100%',
+    height: '100%'
+  },
+  calibrationOverlay: {
+    position: 'absolute',
+    top: spacing.sm,
+    left: spacing.sm,
+    right: spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'center'
+  },
+  calibPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(19, 30, 24, 0.82)',
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 5,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.4)'
+  },
+  calibDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.routineDone,
+    marginRight: 6
+  },
+  calibText: {
+    ...typography.captionBold,
+    fontSize: 9,
+    color: colors.goldLight,
+    letterSpacing: 0.8
+  },
+  aiMarker: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  markerDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.goldDark,
+    borderWidth: 2,
+    borderColor: colors.surface,
+    ...shadows.subtle
+  },
+  markerCard: {
+    backgroundColor: 'rgba(19, 30, 24, 0.88)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+    marginLeft: 6,
+    borderWidth: 0.8,
+    borderColor: 'rgba(197, 154, 111, 0.3)'
+  },
+  markerTitle: {
+    ...typography.captionBold,
+    fontSize: 10,
+    color: colors.goldLight
+  },
+  markerScore: {
+    ...typography.caption,
+    fontSize: 9,
+    color: 'rgba(255, 255, 255, 0.85)'
+  },
+  dialCard: {
+    padding: 0,
+    overflow: 'hidden',
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.3)'
+  },
+  dialGradient: {
+    padding: spacing.base
+  },
+  dialContent: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  dialScoreContainer: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.3)',
+    marginRight: spacing.md,
+    ...shadows.subtle
+  },
+  dialScore: {
+    ...typography.metricValue,
+    fontSize: 34,
+    color: colors.primary
+  },
+  dialScoreMax: {
+    ...typography.captionBold,
+    color: colors.textTertiary,
+    fontSize: 14,
+    marginLeft: 2
+  },
+  dialTextWrap: {
+    flex: 1
+  },
+  dialEyebrow: {
+    ...typography.eyebrow,
+    fontSize: 9,
+    color: colors.goldDark,
+    marginBottom: 2
+  },
+  dialHeadline: {
+    ...typography.title2,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2
+  },
+  dialSummary: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16
+  },
+  focusHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm
+  },
+  sectionHeaderTitle: {
+    ...typography.title2,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary
+  },
+  sectionHeaderMeta: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textTertiary
+  },
+  focusListCard: {
+    padding: spacing.base
+  },
+  focusItem: {
+    paddingVertical: spacing.xs
+  },
+  focusItemTitle: {
+    ...typography.title2,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xxs
+  },
+  focusItemDesc: {
+    ...typography.body,
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginBottom: spacing.xs
+  },
+  solutionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(26, 56, 43, 0.05)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm,
+    alignSelf: 'flex-start'
+  },
+  solutionPillText: {
+    ...typography.captionBold,
+    fontSize: 11,
+    color: colors.primary,
+    marginLeft: spacing.xxs
+  },
+  focusDivider: {
+    height: 1,
+    backgroundColor: 'rgba(26, 56, 43, 0.06)',
+    marginVertical: spacing.sm
+  },
+  metricsCard: {
+    padding: spacing.base
+  },
+  gaugeDivider: {
+    height: 1,
+    backgroundColor: 'rgba(26, 56, 43, 0.06)',
+    marginVertical: spacing.md
   }
 });

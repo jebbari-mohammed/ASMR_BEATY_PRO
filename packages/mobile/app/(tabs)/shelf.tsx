@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
+import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
 import { Button } from '../../src/components/Button';
@@ -15,6 +16,8 @@ interface OwnedProduct {
   category: string;
   dateStarted: string;
   daysActive: number;
+  actives: string;
+  image: any;
   feedback: 'loved' | 'works_well' | 'neutral' | 'irritating';
 }
 
@@ -22,30 +25,25 @@ export default function ShelfScreen() {
   const [shelfItems] = useState<OwnedProduct[]>([
     {
       id: 'p1',
-      brand: 'CeraVe',
-      name: 'Hydrating Facial Cleanser',
-      category: 'Cleanser',
+      brand: 'AURA',
+      name: 'Honey Botanical Soothing Serum',
+      category: 'Treatment',
       dateStarted: 'Aug 21, 2026',
       daysActive: 14,
-      feedback: 'works_well'
-    },
-    {
-      id: 'p2',
-      brand: 'La Roche-Posay',
-      name: 'Toleriane Double Repair Moisturizer',
-      category: 'Moisturizer',
-      dateStarted: 'Aug 21, 2026',
-      daysActive: 14,
+      actives: 'Propolis 83% • Royal Jelly',
+      image: localImages.serumBottle,
       feedback: 'loved'
     },
     {
-      id: 'p3',
-      brand: 'EltaMD',
-      name: 'UV Clear Broad-Spectrum SPF 46',
-      category: 'Sunscreen',
-      dateStarted: 'Aug 24, 2026',
-      daysActive: 11,
-      feedback: 'works_well'
+      id: 'p2',
+      brand: 'KŌR',
+      name: 'Barrier Recovery Cream',
+      category: 'Moisturizer',
+      dateStarted: 'Aug 21, 2026',
+      daysActive: 14,
+      actives: 'Ceramides NP/AP/EOP • Squalane',
+      image: localImages.creamBottle,
+      feedback: 'loved'
     }
   ]);
 
@@ -64,24 +62,24 @@ export default function ShelfScreen() {
           <Text style={typography.eyebrow}>PRODUCT INVENTORY & MEMORY</Text>
           <Text style={styles.title}>My Shelf</Text>
           <Text style={styles.subtitle}>
-            Catalog the formulas you own, monitor when you started them, and evaluate how your skin tolerates each ingredient.
+            Catalog formulas you own, track when you opened them, and observe how your barrier tolerates each active.
           </Text>
         </View>
 
         {/* Action Buttons: Barcode & OCR */}
         <View style={styles.actionRow}>
           <Button
-            title="Barcode Scanner"
+            title="Scan Barcode"
             variant="primary"
             icon={<Ionicons name="barcode-outline" size={18} color={colors.textInverse} />}
-            onPress={() => alert('Barcode camera scanner ready.')}
+            onPress={() => alert('Launching barcode scanner...')}
             style={{ flex: 1, marginRight: spacing.sm }}
           />
           <Button
-            title="Label OCR"
+            title="Label OCR Photo"
             variant="secondary"
             icon={<Ionicons name="camera-outline" size={18} color={colors.primary} />}
-            onPress={() => alert('Bottle label text recognition ready.')}
+            onPress={() => alert('Launching bottle label OCR camera...')}
             style={{ flex: 1 }}
           />
         </View>
@@ -95,8 +93,8 @@ export default function ShelfScreen() {
         {shelfItems.map(item => (
           <Card key={item.id} variant="elevated" style={styles.productCard}>
             <View style={styles.productRow}>
-              <View style={styles.bottleIconWrap}>
-                <Ionicons name="cube-outline" size={20} color={colors.primary} />
+              <View style={styles.productImgWrap}>
+                <Image source={item.image} style={styles.productThumb} resizeMode="cover" />
               </View>
 
               <View style={styles.productInfo}>
@@ -115,18 +113,19 @@ export default function ShelfScreen() {
                 </View>
 
                 <Text style={styles.productName}>{item.name}</Text>
+                <Text style={styles.activeFormulaText}>{item.actives}</Text>
                 <Text style={styles.productMeta}>
-                  {item.category} • Started {item.dateStarted} ({item.daysActive} days active)
+                  {item.category} • Started {item.dateStarted} ({item.daysActive}d active)
                 </Text>
               </View>
             </View>
           </Card>
         ))}
 
-        {/* Vetted Recommendation Card */}
+        {/* Vetted Recommendation Card with Real Product Packshot */}
         <View style={[styles.sectionHeaderRow, { marginTop: spacing.xl }]}>
           <Text style={styles.sectionTitle}>Coach Recommendation</Text>
-          <Text style={styles.sectionMeta}>Filtered by SafetyEngine</Text>
+          <Text style={styles.sectionMeta}>Vetted by SafetyEngine</Text>
         </View>
 
         <Card variant="elevated" style={styles.recCard}>
@@ -136,62 +135,59 @@ export default function ShelfScreen() {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
-            <View style={styles.recBadgeRow}>
+            <View style={styles.recTopRow}>
               <View style={styles.recPill}>
                 <Ionicons name="sparkles" size={12} color={colors.goldDark} />
-                <Text style={styles.recPillText}>BEST FIT FOR VISIBLE REDNESS</Text>
+                <Text style={styles.recPillText}>98% COMPATIBILITY MATCH</Text>
               </View>
-              <Text style={styles.recPrice}>$16.50 USD</Text>
+              <Text style={styles.priceText}>$18.00</Text>
             </View>
 
-            <Text style={styles.recBrand}>SKIN1004</Text>
-            <Text style={styles.recName}>Madagascar Centella Ampoule</Text>
-            <Text style={styles.recDesc}>
-              Single-ingredient 100% Centella Asiatica Extract. Soothes surface warmth and fortifies compromised moisture barriers.
-            </Text>
+            <View style={styles.recProductRow}>
+              <Image source={localImages.serumBottle} style={styles.recProductThumb} />
 
-            {/* Why This Product Dropdown */}
+              <View style={styles.recProductDetails}>
+                <Text style={styles.recBrand}>AURA BOTANICALS</Text>
+                <Text style={styles.recTitle}>Nourishing Honey Calming Serum</Text>
+                <Text style={styles.recDesc}>
+                  Targeted barrier soothing for visible mid-cheek redness without conflicting with your evening routine.
+                </Text>
+              </View>
+            </View>
+
+            {/* Why This Fits Transparency Pill */}
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => setShowWhyModal(!showWhyModal)}
-              style={styles.whyDropdown}
+              style={styles.whyButton}
             >
-              <Ionicons
-                name={showWhyModal ? 'chevron-up' : 'information-circle-outline'}
-                size={16}
-                color={colors.primary}
-              />
-              <Text style={styles.whyDropdownText}>
-                {showWhyModal ? 'Hide Safety & Compatibility Breakdown' : 'Why this product? View Breakdown'}
-              </Text>
+              <Ionicons name="information-circle" size={16} color={colors.primary} />
+              <Text style={styles.whyButtonText}>Why This Product? (Safety Breakdown)</Text>
+              <Ionicons name={showWhyModal ? 'chevron-up' : 'chevron-down'} size={14} color={colors.primary} />
             </TouchableOpacity>
 
             {showWhyModal && (
-              <View style={styles.whyContainer}>
-                <View style={styles.whyRow}>
-                  <Ionicons name="checkmark-circle" size={15} color={colors.routineDone} />
-                  <Text style={styles.whyText}>Zero active ingredient conflicts with your current SPF & moisturizer.</Text>
+              <View style={styles.whyBox}>
+                <View style={styles.whyItem}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.routineDone} />
+                  <Text style={styles.whyItemText}>Zero conflicting actives with your current cleanser & SPF</Text>
                 </View>
-                <View style={styles.whyRow}>
-                  <Ionicons name="checkmark-circle" size={15} color={colors.routineDone} />
-                  <Text style={styles.whyText}>Completely fragrance-free and essential oil-free.</Text>
+                <View style={styles.whyItem}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.routineDone} />
+                  <Text style={styles.whyItemText}>Alcohol-free & fragrance-free formulation</Text>
                 </View>
-                <View style={styles.whyRow}>
-                  <Ionicons name="checkmark-circle" size={15} color={colors.routineDone} />
-                  <Text style={styles.whyText}>Does not duplicate any active serum currently on your shelf.</Text>
-                </View>
-                <View style={styles.whyRow}>
-                  <Ionicons name="checkmark-circle" size={15} color={colors.routineDone} />
-                  <Text style={styles.whyText}>In-stock with verified retailer shipping to your region.</Text>
+                <View style={styles.whyItem}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.routineDone} />
+                  <Text style={styles.whyItemText}>Available for direct dispatch via authorized partner</Text>
                 </View>
               </View>
             )}
 
             <Button
-              title="View Offer on iHerb ($16.50)"
-              variant="primary"
-              icon={<Ionicons name="open-outline" size={16} color={colors.textInverse} />}
-              onPress={() => alert('Resolving trusted affiliate merchant link...')}
+              title="View at Authorized Retailer (iHerb)"
+              variant="luxury"
+              icon={<Ionicons name="open-outline" size={16} color={colors.surfaceTwilight} />}
+              onPress={() => alert('Opening verified partner store...')}
               style={{ marginTop: spacing.md }}
             />
           </LinearGradient>
@@ -216,7 +212,8 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.huge
   },
   headerSection: {
-    marginVertical: spacing.md
+    marginTop: spacing.xs,
+    marginBottom: spacing.md
   },
   title: {
     ...typography.display,
@@ -232,17 +229,19 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    marginBottom: spacing.xl
+    marginBottom: spacing.lg
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md
+    marginBottom: spacing.sm
   },
   sectionTitle: {
-    ...typography.h2,
-    fontSize: 18
+    ...typography.title2,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary
   },
   sectionMeta: {
     ...typography.caption,
@@ -250,21 +249,26 @@ const styles = StyleSheet.create({
     color: colors.textTertiary
   },
   productCard: {
-    padding: spacing.base,
-    marginBottom: spacing.sm + 2
+    marginBottom: spacing.sm,
+    padding: spacing.sm + 4
   },
   productRow: {
     flexDirection: 'row',
     alignItems: 'center'
   },
-  bottleIconWrap: {
-    width: 44,
-    height: 44,
+  productImgWrap: {
+    width: 64,
+    height: 64,
     borderRadius: radii.md,
-    backgroundColor: colors.primarySoft,
-    alignItems: 'center',
-    justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.08)',
+    backgroundColor: colors.surfaceSubtle,
     marginRight: spacing.md
+  },
+  productThumb: {
+    width: '100%',
+    height: '100%'
   },
   productInfo: {
     flex: 1
@@ -276,27 +280,27 @@ const styles = StyleSheet.create({
     marginBottom: 2
   },
   brandText: {
+    ...typography.eyebrow,
     fontSize: 10,
-    fontWeight: '800',
     color: colors.goldDark,
     letterSpacing: 0.8
   },
   feedbackBadge: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    paddingHorizontal: spacing.sm,
     borderRadius: radii.full
   },
   feedbackLoved: {
-    backgroundColor: colors.goldLight
+    backgroundColor: 'rgba(197, 154, 111, 0.15)'
   },
   feedbackGood: {
-    backgroundColor: colors.routineDoneBg
+    backgroundColor: 'rgba(74, 124, 89, 0.1)'
   },
   feedbackText: {
+    ...typography.captionBold,
     fontSize: 10,
-    fontWeight: '700',
     marginLeft: 3
   },
   feedbackTextLoved: {
@@ -306,102 +310,130 @@ const styles = StyleSheet.create({
     color: colors.routineDone
   },
   productName: {
-    ...typography.bodyBold,
-    fontSize: 14,
+    ...typography.title2,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2
+  },
+  activeFormulaText: {
+    ...typography.captionBold,
+    fontSize: 11,
+    color: colors.primary,
     marginBottom: 2
   },
   productMeta: {
     ...typography.caption,
-    fontSize: 12,
-    color: colors.textSecondary
+    fontSize: 11,
+    color: colors.textTertiary
   },
   recCard: {
     padding: 0,
     overflow: 'hidden',
-    marginBottom: spacing.base,
+    marginBottom: spacing.lg,
     borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.35)'
+    borderColor: 'rgba(197, 154, 111, 0.3)'
   },
   recGradient: {
-    padding: spacing.base + 2
+    padding: spacing.base
   },
-  recBadgeRow: {
+  recTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.sm
+    marginBottom: spacing.md
   },
   recPill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    paddingVertical: 3,
-    paddingHorizontal: spacing.sm + 2,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.3)'
+    ...shadows.subtle
   },
   recPillText: {
-    fontSize: 9,
-    fontWeight: '800',
+    ...typography.captionBold,
+    fontSize: 10,
     color: colors.goldDark,
-    letterSpacing: 0.8,
-    marginLeft: 4
+    marginLeft: 4,
+    letterSpacing: 0.8
   },
-  recPrice: {
-    fontSize: 13,
-    fontWeight: '700',
+  priceText: {
+    ...typography.metricValue,
+    fontSize: 18,
     color: colors.primary
   },
-  recBrand: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: colors.goldDark,
-    letterSpacing: 1.2
+  recProductRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.md
   },
-  recName: {
-    ...typography.h2,
-    fontSize: 18,
-    marginTop: 2,
-    marginBottom: spacing.xs
+  recProductThumb: {
+    width: 72,
+    height: 72,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.4)',
+    marginRight: spacing.md
+  },
+  recProductDetails: {
+    flex: 1
+  },
+  recBrand: {
+    ...typography.eyebrow,
+    fontSize: 10,
+    color: colors.goldDark,
+    letterSpacing: 0.8,
+    marginBottom: 2
+  },
+  recTitle: {
+    ...typography.title2,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 3
   },
   recDesc: {
     ...typography.caption,
-    fontSize: 13,
-    lineHeight: 18,
-    color: colors.textSecondary
+    fontSize: 12,
+    color: colors.textSecondary,
+    lineHeight: 16
   },
-  whyDropdown: {
+  whyButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: spacing.md,
-    paddingVertical: spacing.xs
-  },
-  whyDropdownText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary,
-    marginLeft: 4
-  },
-  whyContainer: {
     backgroundColor: colors.surface,
-    padding: spacing.md,
+    padding: spacing.sm,
     borderRadius: radii.md,
     marginTop: spacing.xs,
     borderWidth: 1,
-    borderColor: colors.borderLight
+    borderColor: 'rgba(26, 56, 43, 0.08)'
   },
-  whyRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.xs + 2
-  },
-  whyText: {
-    ...typography.caption,
+  whyButtonText: {
+    ...typography.captionBold,
+    color: colors.primary,
     fontSize: 12,
-    lineHeight: 16,
-    color: colors.textSecondary,
-    marginLeft: spacing.sm,
-    flex: 1
+    flex: 1,
+    marginLeft: spacing.xs
+  },
+  whyBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: radii.md,
+    padding: spacing.sm,
+    marginTop: spacing.xs,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.06)'
+  },
+  whyItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4
+  },
+  whyItemText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textPrimary,
+    marginLeft: 6
   }
 });

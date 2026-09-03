@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ImageBackground } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
+import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
@@ -53,13 +54,27 @@ export default function TodayScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Daily Greeting Banner */}
-        <View style={styles.heroSection}>
-          <Text style={typography.eyebrow}>SUNDAY, DAY 12 • 42-DAY PLAN</Text>
-          <Text style={styles.greetingTitle}>Good Morning, Sarah</Text>
-          <Text style={styles.greetingBody}>
-            Keep your routine steady today to help calm visible cheek redness.
-          </Text>
+        {/* Editorial Real Photography Hero Banner */}
+        <View style={styles.editorialBanner}>
+          <ImageBackground
+            source={localImages.morningGlow}
+            style={styles.editorialImage}
+            imageStyle={{ borderRadius: radii.lg }}
+          >
+            <LinearGradient
+              colors={['rgba(26,56,43,0.1)', 'rgba(19,30,24,0.88)']}
+              style={styles.editorialGradient}
+            >
+              <View style={styles.editorialPill}>
+                <Ionicons name="sparkles" size={11} color={colors.goldDark} style={{ marginRight: 5 }} />
+                <Text style={styles.editorialPillText}>DAY 12 • MORNING GLOW RITUAL</Text>
+              </View>
+              <Text style={styles.editorialTitle}>Nourish & Protect Your Barrier</Text>
+              <Text style={styles.editorialSubtitle}>
+                Surface hydration steady. Complete your AM routine to sustain progress.
+              </Text>
+            </LinearGradient>
+          </ImageBackground>
         </View>
 
         {/* Hero Consistency & Streak Card */}
@@ -96,6 +111,24 @@ export default function TodayScreen() {
             </View>
           </LinearGradient>
         </Card>
+
+        {/* Next Scheduled Scan Banner with Real Photo Preview */}
+        <TouchableOpacity
+          style={styles.nextScanCard}
+          activeOpacity={0.85}
+          onPress={() => router.push('/(tabs)/scan')}
+        >
+          <View style={styles.scanThumbWrap}>
+            <Image source={localImages.scanPortrait} style={styles.scanThumb} />
+            <View style={styles.scanThumbDot} />
+          </View>
+          <View style={styles.scanTextWrap}>
+            <Text style={styles.scanEyebrow}>UPCOMING BIOMETRIC SCAN</Text>
+            <Text style={styles.scanTitle}>Day 14 Skin Snapshot</Text>
+            <Text style={styles.scanSub}>Scheduled in 2 days • Track cheek redness & texture</Text>
+          </View>
+          <Ionicons name="scan-outline" size={24} color={colors.primary} />
+        </TouchableOpacity>
 
         {/* Morning Ritual Section */}
         <View style={styles.sectionHeaderRow}>
@@ -183,20 +216,24 @@ export default function TodayScreen() {
           </TouchableOpacity>
         ))}
 
-        {/* Concierge Coach Touchpoint */}
+        {/* Concierge Coach Touchpoint with Real Aesthetician Avatar */}
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={() => router.push('/(tabs)/coach')}
           style={styles.coachCard}
         >
           <View style={styles.coachRow}>
-            <View style={styles.coachAvatar}>
-              <Ionicons name="sparkles" size={18} color={colors.goldDark} />
-            </View>
+            <Image source={localImages.coachPortrait} style={styles.coachAvatarImg} />
             <View style={styles.coachTextWrap}>
-              <Text style={styles.coachTitle}>Ask your AI Skin Coach</Text>
+              <View style={styles.coachHeaderRow}>
+                <Text style={styles.coachTitle}>Ask your AI Skin Coach</Text>
+                <View style={styles.onlineBadge}>
+                  <View style={styles.onlineDot} />
+                  <Text style={styles.onlineText}>Active</Text>
+                </View>
+              </View>
               <Text style={styles.coachPrompt}>
-                "Can I use retinol alongside tonight's soothing serum?"
+                "Can I use my soothing serum alongside tonight's routine?"
               </Text>
             </View>
             <Ionicons name="arrow-forward" size={18} color={colors.primary} />
@@ -221,66 +258,97 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.huge
   },
-  heroSection: {
-    marginVertical: spacing.md
+  editorialBanner: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    ...shadows.medium
   },
-  greetingTitle: {
-    ...typography.display,
-    fontSize: 28,
-    lineHeight: 34,
-    marginTop: spacing.xxs,
+  editorialImage: {
+    width: '100%',
+    height: 190,
+    justifyContent: 'flex-end'
+  },
+  editorialGradient: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: spacing.base
+  },
+  editorialPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(26, 56, 43, 0.85)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.4)',
     marginBottom: spacing.xs
   },
-  greetingBody: {
+  editorialPillText: {
+    ...typography.captionBold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: colors.goldLight
+  },
+  editorialTitle: {
+    ...typography.title1,
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 4,
+    letterSpacing: -0.3
+  },
+  editorialSubtitle: {
     ...typography.body,
-    fontSize: 14,
-    lineHeight: 20
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontSize: 13,
+    lineHeight: 18
   },
   streakCard: {
     padding: 0,
     overflow: 'hidden',
-    marginBottom: spacing.xl,
+    marginBottom: spacing.md,
     borderWidth: 1,
     borderColor: 'rgba(234, 229, 220, 0.7)'
   },
   streakGradient: {
-    padding: spacing.base + 2
+    padding: spacing.base
   },
   streakTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md
+    marginBottom: spacing.sm
   },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm + 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: 'rgba(186, 109, 84, 0.2)'
+    ...shadows.subtle
   },
   streakBadgeText: {
+    ...typography.captionBold,
     fontSize: 11,
-    fontWeight: '800',
     color: colors.terracotta,
-    marginLeft: 4,
-    letterSpacing: 0.8
+    marginLeft: spacing.xxs,
+    letterSpacing: 0.5
   },
   progressCounter: {
-    backgroundColor: colors.surface,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.borderLight
+    backgroundColor: 'rgba(26, 56, 43, 0.06)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radii.sm
   },
   counterText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.primary
+    ...typography.captionBold,
+    color: colors.primary,
+    fontSize: 12
   },
   progressTrackContainer: {
     flexDirection: 'row',
@@ -289,13 +357,11 @@ const styles = StyleSheet.create({
   },
   progressBarTrack: {
     flex: 1,
-    height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+    height: 6,
+    backgroundColor: 'rgba(26, 56, 43, 0.1)',
     borderRadius: radii.full,
     overflow: 'hidden',
-    marginRight: spacing.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(45, 86, 67, 0.1)'
+    marginRight: spacing.sm
   },
   progressBarFill: {
     height: '100%',
@@ -303,9 +369,10 @@ const styles = StyleSheet.create({
     borderRadius: radii.full
   },
   percentText: {
+    ...typography.captionBold,
+    color: colors.primary,
     fontSize: 12,
-    fontWeight: '700',
-    color: colors.primary
+    minWidth: 34
   },
   milestoneRow: {
     flexDirection: 'row',
@@ -313,72 +380,127 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between'
   },
   milestoneLabel: {
+    ...typography.caption,
     fontSize: 11,
-    color: colors.textTertiary,
-    fontWeight: '500'
+    color: colors.textSecondary
   },
   milestoneActive: {
-    color: colors.primary,
-    fontWeight: '700'
+    fontWeight: '700',
+    color: colors.primary
   },
   milestoneDivider: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(45, 86, 67, 0.15)',
+    backgroundColor: 'rgba(26, 56, 43, 0.12)',
     marginHorizontal: spacing.sm
+  },
+  nextScanCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: 'rgba(26, 56, 43, 0.08)',
+    marginBottom: spacing.lg,
+    ...shadows.subtle
+  },
+  scanThumbWrap: {
+    position: 'relative'
+  },
+  scanThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceSubtle
+  },
+  scanThumbDot: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.routineDone,
+    borderWidth: 2,
+    borderColor: colors.surface
+  },
+  scanTextWrap: {
+    flex: 1,
+    marginLeft: spacing.md,
+    marginRight: spacing.sm
+  },
+  scanEyebrow: {
+    ...typography.eyebrow,
+    fontSize: 9,
+    marginBottom: 2
+  },
+  scanTitle: {
+    ...typography.title2,
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2
+  },
+  scanSub: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textSecondary
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.md
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs
   },
   eveningSectionHeader: {
-    marginTop: spacing.xl
+    marginTop: spacing.lg
   },
   sectionTitleGroup: {
     flexDirection: 'row',
     alignItems: 'center'
   },
   sectionIcon: {
-    marginRight: spacing.xs + 2
+    marginRight: spacing.xs
   },
   sectionTitle: {
-    ...typography.h2,
-    fontSize: 18
+    ...typography.title2,
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textPrimary
   },
   sectionMeta: {
     ...typography.caption,
-    fontSize: 12,
-    color: colors.textTertiary
+    color: colors.textTertiary,
+    fontSize: 12
   },
   stepCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.surface,
-    padding: spacing.base,
+    padding: spacing.md,
     borderRadius: radii.lg,
-    marginBottom: spacing.sm,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: 'rgba(26, 56, 43, 0.06)',
+    marginBottom: spacing.sm,
     ...shadows.subtle
   },
   stepCardCompleted: {
-    backgroundColor: '#FAF9F6',
-    borderColor: 'rgba(234, 229, 220, 0.5)',
-    shadowOpacity: 0.01
+    backgroundColor: 'rgba(244, 241, 235, 0.6)',
+    borderColor: 'rgba(26, 56, 43, 0.04)'
   },
   stepIconWrap: {
-    width: 40,
-    height: 40,
+    width: 38,
+    height: 38,
     borderRadius: radii.md,
-    backgroundColor: colors.primarySoft,
+    backgroundColor: 'rgba(26, 56, 43, 0.06)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: spacing.md
   },
   stepIconWrapDone: {
-    backgroundColor: colors.routineDone
+    backgroundColor: colors.primary
   },
   stepInfo: {
     flex: 1
@@ -390,83 +512,110 @@ const styles = StyleSheet.create({
     marginBottom: 2
   },
   stepCategory: {
+    ...typography.captionBold,
     fontSize: 10,
-    fontWeight: '700',
     color: colors.goldDark,
     letterSpacing: 0.8
   },
   stepDuration: {
-    fontSize: 10,
-    fontWeight: '600',
+    ...typography.caption,
+    fontSize: 11,
     color: colors.textTertiary
   },
   stepName: {
-    ...typography.bodyBold,
-    fontSize: 14,
+    ...typography.title2,
+    fontSize: 15,
+    fontWeight: '600',
     color: colors.textPrimary,
     marginBottom: 2
   },
   stepNameCompleted: {
-    color: colors.textTertiary,
-    textDecorationLine: 'line-through'
+    textDecorationLine: 'line-through',
+    color: colors.textSecondary
   },
   stepDetail: {
     ...typography.caption,
     fontSize: 12,
-    color: colors.textSecondary
+    color: colors.textSecondary,
+    lineHeight: 16
   },
   checkbox: {
     width: 24,
     height: 24,
-    borderRadius: radii.full,
+    borderRadius: radii.sm,
     borderWidth: 1.5,
-    borderColor: colors.border,
+    borderColor: 'rgba(26, 56, 43, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: spacing.sm
   },
   checkboxDone: {
-    backgroundColor: colors.routineDone,
-    borderColor: colors.routineDone
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   coachCard: {
-    marginTop: spacing.lg,
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
-    padding: spacing.base,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: colors.borderLight,
+    borderColor: 'rgba(197, 154, 111, 0.3)',
     ...shadows.subtle
   },
   coachRow: {
     flexDirection: 'row',
     alignItems: 'center'
   },
-  coachAvatar: {
-    width: 36,
-    height: 36,
+  coachAvatarImg: {
+    width: 44,
+    height: 44,
     borderRadius: radii.full,
-    backgroundColor: colors.goldLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.md,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.3)'
+    borderWidth: 2,
+    borderColor: colors.goldDark,
+    marginRight: spacing.md
   },
   coachTextWrap: {
     flex: 1,
     marginRight: spacing.sm
   },
+  coachHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2
+  },
   coachTitle: {
-    ...typography.bodyBold,
-    fontSize: 13,
-    color: colors.textPrimary
+    ...typography.title2,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginRight: spacing.xs
+  },
+  onlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(74, 124, 89, 0.12)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radii.full
+  },
+  onlineDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: colors.routineDone,
+    marginRight: 4
+  },
+  onlineText: {
+    ...typography.captionBold,
+    fontSize: 9,
+    color: colors.routineDone
   },
   coachPrompt: {
     ...typography.caption,
     fontSize: 12,
-    color: colors.goldDark,
     fontStyle: 'italic',
-    marginTop: 1
+    color: colors.textSecondary,
+    lineHeight: 16
   }
 });
