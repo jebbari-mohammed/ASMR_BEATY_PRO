@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, StyleSheet, ViewStyle, StyleProp } from 'react-native';
-import { colors, radii, spacing } from '../theme/tokens';
+import { colors, radii, spacing, shadows } from '../theme/tokens';
 
 interface CardProps {
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
-  variant?: 'elevated' | 'subtle' | 'outlined';
+  variant?: 'elevated' | 'subtle' | 'outlined' | 'twilight' | 'champagne';
 }
 
 export const Card: React.FC<CardProps> = ({ children, style, variant = 'elevated' }) => {
@@ -16,6 +16,8 @@ export const Card: React.FC<CardProps> = ({ children, style, variant = 'elevated
         variant === 'elevated' && styles.elevated,
         variant === 'subtle' && styles.subtle,
         variant === 'outlined' && styles.outlined,
+        variant === 'twilight' && styles.twilight,
+        variant === 'champagne' && styles.champagne,
         style
       ]}
     >
@@ -31,21 +33,30 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface
   },
   elevated: {
-    shadowColor: colors.textPrimary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    ...shadows.card,
     borderWidth: 1,
     borderColor: colors.borderLight
   },
   subtle: {
     backgroundColor: colors.surfaceSecondary,
-    borderWidth: 0
+    borderWidth: 1,
+    borderColor: 'rgba(234, 229, 220, 0.4)'
   },
   outlined: {
-    backgroundColor: 'transparent',
+    backgroundColor: colors.surfaceTranslucent,
     borderWidth: 1,
     borderColor: colors.border
+  },
+  twilight: {
+    backgroundColor: colors.surfaceTwilightCard,
+    borderWidth: 1,
+    borderColor: colors.borderDark,
+    ...shadows.subtle
+  },
+  champagne: {
+    backgroundColor: colors.goldLight,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.25)',
+    ...shadows.subtle
   }
 });

@@ -1,219 +1,452 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
+import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
+
+interface Milestone {
+  day: number;
+  label: string;
+  date: string;
+  status: 'completed' | 'active' | 'upcoming';
+}
 
 export default function ProgressScreen() {
   const [selectedMilestone, setSelectedMilestone] = useState<number>(14);
 
-  const milestones = [
-    { day: 1, label: 'Day 1', date: 'Aug 21' },
-    { day: 7, label: 'Day 7', date: 'Aug 28' },
-    { day: 14, label: 'Day 14', date: 'Sep 04' },
-    { day: 30, label: 'Day 30', date: 'Upcoming' },
-    { day: 42, label: 'Day 42', date: 'Upcoming' }
+  const milestones: Milestone[] = [
+    { day: 1, label: 'Day 1', date: 'Aug 21', status: 'completed' },
+    { day: 7, label: 'Day 7', date: 'Aug 28', status: 'completed' },
+    { day: 14, label: 'Day 14', date: 'Sep 04', status: 'active' },
+    { day: 30, label: 'Day 30', date: 'Sep 20', status: 'upcoming' },
+    { day: 42, label: 'Day 42', date: 'Oct 02', status: 'upcoming' }
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={typography.captionBold}>SKIN MEMORY & RETENTION</Text>
-        <Text style={[typography.h1, styles.title]}>42-Day Consistency</Text>
-        <Text style={typography.body}>
-          Track how your skin appearance evolves alongside consistent daily skincare habits.
-        </Text>
-      </View>
+    <View style={styles.screen}>
+      <Header />
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header Section */}
+        <View style={styles.headerSection}>
+          <Text style={typography.eyebrow}>LONGITUDINAL APPEARANCE MEMORY</Text>
+          <Text style={styles.title}>42-Day Consistency</Text>
+          <Text style={styles.subtitle}>
+            Observational appearance evolution paired with your daily morning and evening skincare habits.
+          </Text>
+        </View>
 
-      {/* Standardized Progress Milestones */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.milestoneScroll}>
-        {milestones.map(m => {
-          const isSelected = selectedMilestone === m.day;
-          return (
-            <TouchableOpacity
-              key={m.day}
-              onPress={() => setSelectedMilestone(m.day)}
-              style={[styles.milestonePill, isSelected && styles.milestonePillActive]}
-            >
-              <Text style={[styles.milestoneDay, isSelected && styles.milestoneTextActive]}>{m.label}</Text>
-              <Text style={[styles.milestoneDate, isSelected && styles.milestoneDateActive]}>{m.date}</Text>
-            </TouchableOpacity>
-          );
-        })}
+        {/* Milestone Timeline Carousel */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timelineScroll}>
+          {milestones.map((m, idx) => {
+            const isSelected = selectedMilestone === m.day;
+            const isCurrent = m.status === 'active';
+            return (
+              <TouchableOpacity
+                key={m.day}
+                activeOpacity={0.8}
+                onPress={() => setSelectedMilestone(m.day)}
+                style={[
+                  styles.milestoneNode,
+                  isSelected && styles.milestoneNodeSelected,
+                  isCurrent && styles.milestoneNodeCurrent
+                ]}
+              >
+                <View style={[styles.nodeIconWrap, isCurrent && styles.nodeIconWrapCurrent]}>
+                  <Ionicons
+                    name={m.status === 'completed' ? 'checkmark-circle' : isCurrent ? 'sparkles' : 'lock-closed-outline'}
+                    size={16}
+                    color={isCurrent ? colors.textInverse : m.status === 'completed' ? colors.primary : colors.textTertiary}
+                  />
+                </View>
+                <Text style={[styles.nodeLabel, isSelected && styles.nodeLabelSelected]}>{m.label}</Text>
+                <Text style={[styles.nodeDate, isSelected && styles.nodeDateSelected]}>{m.date}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Skin Memory: "What Changed?" Card */}
+        <Card variant="elevated" style={styles.memoryCard}>
+          <LinearGradient
+            colors={gradients.champagneGlow}
+            style={styles.memoryCardGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={styles.memoryTopRow}>
+              <View style={styles.memoryBadge}>
+                <Ionicons name="sparkles" size={13} color={colors.goldDark} />
+                <Text style={styles.memoryBadgeText}>SKIN MEMORY INSIGHTS</Text>
+              </View>
+              <Text style={styles.memoryMeta}>Day 14 vs. Initial Baseline</Text>
+            </View>
+
+            <View style={styles.insightItem}>
+              <View style={styles.insightIconWrap}>
+                <Ionicons name="trending-down" size={14} color={colors.routineDone} />
+              </View>
+              <Text style={styles.insightText}>
+                <Text style={styles.boldSpan}>Visible Redness:</Text> Noticeable reduction across the mid-cheeks compared to Day 1 baseline.
+              </Text>
+            </View>
+
+            <View style={styles.insightItem}>
+              <View style={styles.insightIconWrap}>
+                <Ionicons name="shield-checkmark-outline" size={14} color={colors.primary} />
+              </View>
+              <Text style={styles.insightText}>
+                <Text style={styles.boldSpan}>Barrier Stability:</Text> Surface hydration score held steady at 86/100 without active irritation.
+              </Text>
+            </View>
+
+            <View style={styles.insightItem}>
+              <View style={styles.insightIconWrap}>
+                <Ionicons name="leaf-outline" size={14} color={colors.goldDark} />
+              </View>
+              <Text style={styles.insightText}>
+                <Text style={styles.boldSpan}>Product Introduction:</Text> Introduced Centella Calming Serum 10 days ago with zero reported sensitivity.
+              </Text>
+            </View>
+
+            <View style={styles.insightItem}>
+              <View style={styles.insightIconWrap}>
+                <Ionicons name="flame" size={14} color={colors.terracotta} />
+              </View>
+              <Text style={styles.insightText}>
+                <Text style={styles.boldSpan}>Adherence:</Text> Completed 88% of scheduled evening routines over the 14-day observation window.
+              </Text>
+            </View>
+          </LinearGradient>
+        </Card>
+
+        {/* Standardized Visual Comparison */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Standardized Comparison</Text>
+          <Text style={styles.sectionMeta}>Normalized 5500K Lighting</Text>
+        </View>
+
+        <Card variant="elevated" style={styles.compareCard}>
+          <View style={styles.compareRow}>
+            {/* Day 1 */}
+            <View style={styles.compareSide}>
+              <View style={styles.photoContainer}>
+                <Ionicons name="person-outline" size={40} color={colors.textTertiary} />
+                <View style={styles.photoPill}>
+                  <Text style={styles.photoPillText}>DAY 1 • AUG 21</Text>
+                </View>
+              </View>
+              <Text style={styles.photoCaption}>Initial Baseline</Text>
+              <Text style={styles.photoSubCaption}>Slight visible flushing</Text>
+            </View>
+
+            <View style={styles.compareDivider}>
+              <View style={styles.vsBadge}>
+                <Text style={styles.vsText}>VS</Text>
+              </View>
+            </View>
+
+            {/* Day 14 */}
+            <View style={styles.compareSide}>
+              <View style={[styles.photoContainer, styles.photoContainerActive]}>
+                <Ionicons name="person" size={40} color={colors.primary} />
+                <View style={[styles.photoPill, styles.photoPillActive]}>
+                  <Text style={[styles.photoPillText, styles.photoPillTextActive]}>DAY 14 • CURRENT</Text>
+                </View>
+              </View>
+              <Text style={styles.photoCaption}>Current Milestone</Text>
+              <Text style={styles.photoSubCaption}>Calmer appearance</Text>
+            </View>
+          </View>
+        </Card>
+
+        {/* Adherence & Retention Stats */}
+        <View style={styles.statsGrid}>
+          <Card variant="subtle" style={styles.statCard}>
+            <Text style={styles.statNumber}>88%</Text>
+            <Text style={styles.statLabel}>Routine Adherence</Text>
+          </Card>
+          <Card variant="subtle" style={styles.statCard}>
+            <Text style={styles.statNumber}>12 / 42</Text>
+            <Text style={styles.statLabel}>Program Days</Text>
+          </Card>
+          <Card variant="subtle" style={styles.statCard}>
+            <Text style={styles.statNumber}>0</Text>
+            <Text style={styles.statLabel}>Reported Irritations</Text>
+          </Card>
+        </View>
+
+        <DisclaimerBar showAffiliate={false} />
       </ScrollView>
-
-      {/* "What Changed?" Memory Card (Section 9) */}
-      <Card variant="elevated" style={styles.memoryCard}>
-        <Text style={[typography.captionBold, { color: colors.sage }]}>SKIN MEMORY: WHAT CHANGED?</Text>
-        <Text style={[typography.h3, { marginTop: spacing.xs, marginBottom: spacing.sm }]}>
-          Day 14 vs. Initial Baseline
-        </Text>
-
-        <View style={styles.observationRow}>
-          <Text style={styles.bullet}>•</Text>
-          <Text style={styles.observationText}>
-            Visible redness appears lower across the mid-cheeks compared to your Day 1 baseline.
-          </Text>
-        </View>
-
-        <View style={styles.observationRow}>
-          <Text style={styles.bullet}>•</Text>
-          <Text style={styles.observationText}>
-            Your surface texture score has remained stable, reflecting consistent barrier moisturization.
-          </Text>
-        </View>
-
-        <View style={styles.observationRow}>
-          <Text style={styles.bullet}>•</Text>
-          <Text style={styles.observationText}>
-            You introduced Centella Calming Serum 10 days ago without any reported irritation.
-          </Text>
-        </View>
-
-        <View style={styles.observationRow}>
-          <Text style={styles.bullet}>•</Text>
-          <Text style={styles.observationText}>
-            Evening routine consistency reached 88% over the past 14 days.
-          </Text>
-        </View>
-      </Card>
-
-      {/* Before / After Standardized Visual Comparison */}
-      <View style={styles.sectionHeader}>
-        <Text style={typography.h2}>Standardized Comparison</Text>
-        <Text style={typography.caption}>Framing and distance normalized across scans</Text>
-      </View>
-
-      <Card variant="subtle" style={styles.compareCard}>
-        <View style={styles.compareContainer}>
-          <View style={styles.compareHalf}>
-            <View style={styles.photoPlaceholder}>
-              <Text style={typography.captionBold}>Day 1 Baseline</Text>
-              <Text style={styles.photoDate}>Aug 21</Text>
-            </View>
-          </View>
-          <View style={styles.dividerLine} />
-          <View style={styles.compareHalf}>
-            <View style={styles.photoPlaceholder}>
-              <Text style={typography.captionBold}>Day 14 (Current)</Text>
-              <Text style={styles.photoDate}>Sep 04</Text>
-            </View>
-          </View>
-        </View>
-        <Text style={[typography.caption, styles.compareDisclaimer]}>
-          Lighting and environmental conditions can influence photographic appearance. Use comparison as a guide for routine consistency rather than clinical measurement.
-        </Text>
-      </Card>
-
-      <DisclaimerBar showAffiliate={false} />
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: colors.background
   },
+  container: {
+    flex: 1
+  },
   content: {
-    padding: spacing.base,
+    paddingHorizontal: spacing.base,
     paddingBottom: spacing.huge
   },
-  header: {
-    marginBottom: spacing.md
+  headerSection: {
+    marginVertical: spacing.md
   },
   title: {
-    marginTop: spacing.xs,
+    ...typography.display,
+    fontSize: 28,
+    lineHeight: 34,
+    marginTop: spacing.xxs,
     marginBottom: spacing.xs
   },
-  milestoneScroll: {
-    flexDirection: 'row',
-    marginBottom: spacing.xl
+  subtitle: {
+    ...typography.body,
+    fontSize: 14,
+    lineHeight: 20
   },
-  milestonePill: {
+  timelineScroll: {
+    marginBottom: spacing.xl,
+    paddingVertical: spacing.xs
+  },
+  milestoneNode: {
     backgroundColor: colors.surface,
-    paddingVertical: spacing.sm + 2,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radii.full,
-    marginRight: spacing.sm,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.base,
+    borderRadius: radii.lg,
+    alignItems: 'center',
+    marginRight: spacing.md,
     borderWidth: 1,
     borderColor: colors.borderLight,
-    alignItems: 'center'
+    minWidth: 88,
+    ...shadows.subtle
   },
-  milestonePillActive: {
-    backgroundColor: colors.sage,
-    borderColor: colors.sage
+  milestoneNodeSelected: {
+    borderColor: colors.primary,
+    backgroundColor: colors.surface
   },
-  milestoneDay: {
-    ...typography.captionBold,
+  milestoneNodeCurrent: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryLight
+  },
+  nodeIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.xs
+  },
+  nodeIconWrapCurrent: {
+    backgroundColor: colors.primary
+  },
+  nodeLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textPrimary,
+    marginBottom: 2
+  },
+  nodeLabelSelected: {
+    color: colors.primary
+  },
+  nodeDate: {
+    fontSize: 10,
+    color: colors.textTertiary
+  },
+  nodeDateSelected: {
+    color: colors.primaryLight,
+    fontWeight: '600'
+  },
+  memoryCard: {
+    padding: 0,
+    overflow: 'hidden',
+    marginBottom: spacing.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.25)'
+  },
+  memoryCardGradient: {
+    padding: spacing.base + 2
+  },
+  memoryTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md
+  },
+  memoryBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm + 2,
+    borderRadius: radii.full,
+    borderWidth: 1,
+    borderColor: 'rgba(197, 154, 111, 0.3)'
+  },
+  memoryBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.goldDark,
+    marginLeft: 4,
+    letterSpacing: 0.8
+  },
+  memoryMeta: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.textSecondary
+  },
+  insightItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm + 2
+  },
+  insightIconWrap: {
+    width: 24,
+    height: 24,
+    borderRadius: radii.full,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    marginTop: 1,
+    borderWidth: 1,
+    borderColor: colors.borderLight
+  },
+  insightText: {
+    ...typography.body,
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19
+  },
+  boldSpan: {
+    fontWeight: '700',
     color: colors.textPrimary
   },
-  milestoneDate: {
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md
+  },
+  sectionTitle: {
+    ...typography.h2,
+    fontSize: 18
+  },
+  sectionMeta: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textTertiary
+  },
+  compareCard: {
+    padding: spacing.base,
+    marginBottom: spacing.xl
+  },
+  compareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  compareSide: {
+    flex: 1,
+    alignItems: 'center'
+  },
+  photoContainer: {
+    width: '100%',
+    height: 140,
+    borderRadius: radii.md,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    position: 'relative'
+  },
+  photoContainerActive: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryLight
+  },
+  photoPill: {
+    position: 'absolute',
+    bottom: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingVertical: 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radii.full
+  },
+  photoPillActive: {
+    backgroundColor: colors.primary
+  },
+  photoPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+    color: colors.textSecondary
+  },
+  photoPillTextActive: {
+    color: colors.textInverse
+  },
+  photoCaption: {
+    ...typography.bodyBold,
+    fontSize: 13
+  },
+  photoSubCaption: {
     ...typography.caption,
     fontSize: 11,
     color: colors.textTertiary
   },
-  milestoneTextActive: {
-    color: colors.textInverse
-  },
-  milestoneDateActive: {
-    color: colors.surfaceSecondary
-  },
-  memoryCard: {
-    marginBottom: spacing.xl
-  },
-  observationRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs
-  },
-  bullet: {
-    fontSize: 18,
-    color: colors.sage,
-    marginRight: spacing.sm,
-    lineHeight: 22
-  },
-  observationText: {
-    ...typography.body,
-    flex: 1,
-    fontSize: 14
-  },
-  sectionHeader: {
-    marginBottom: spacing.md
-  },
-  compareCard: {
-    marginBottom: spacing.xl,
-    padding: spacing.base
-  },
-  compareContainer: {
-    flexDirection: 'row',
-    height: 200,
-    borderRadius: radii.md,
-    overflow: 'hidden'
-  },
-  compareHalf: {
-    flex: 1,
-    backgroundColor: colors.surfaceSecondary,
+  compareDivider: {
+    width: 32,
     alignItems: 'center',
     justifyContent: 'center'
   },
-  dividerLine: {
-    width: 2,
-    backgroundColor: colors.surface
+  vsBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.border
   },
-  photoPlaceholder: {
-    alignItems: 'center'
+  vsText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.textTertiary
   },
-  photoDate: {
-    ...typography.caption,
-    fontSize: 12,
-    marginTop: 2
+  statsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.base
   },
-  compareDisclaimer: {
-    textAlign: 'center',
-    marginTop: spacing.md,
-    lineHeight: 16
+  statCard: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 3,
+    paddingVertical: spacing.md
+  },
+  statNumber: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.primary,
+    marginBottom: 2
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.textTertiary,
+    textAlign: 'center'
   }
 });

@@ -1,67 +1,84 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { colors, typography } from '../../src/theme/tokens';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, shadows } from '../../src/theme/tokens';
 
 export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: colors.background,
-          elevation: 0,
-          shadowOpacity: 0
-        },
-        headerTitleStyle: typography.h3,
+        headerShown: false,
         tabBarStyle: {
-          backgroundColor: colors.surface,
-          borderTopColor: colors.borderLight,
-          elevation: 4
+          backgroundColor: '#FFFFFF',
+          borderTopColor: 'rgba(234, 229, 220, 0.7)',
+          borderTopWidth: 1,
+          height: 64,
+          paddingTop: 8,
+          paddingBottom: 10,
+          ...shadows.subtle
         },
-        tabBarActiveTintColor: colors.sage,
-        tabBarInactiveTintColor: colors.textTertiary
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textTertiary,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: '600',
+          letterSpacing: 0.3,
+          marginTop: 2
+        }
       }}
     >
       <Tabs.Screen
         name="today"
         options={{
           title: 'Today',
-          headerTitle: 'Daily Routine'
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'sparkles' : 'sparkles-outline'} size={22} color={color} />
+          )
         }}
       />
       <Tabs.Screen
         name="scan"
         options={{
-          title: 'Scan',
-          headerTitle: 'Skin Snapshot'
+          title: 'Skin Scan',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'scan-circle' : 'scan-circle-outline'} size={24} color={color} />
+          )
         }}
       />
       <Tabs.Screen
         name="progress"
         options={{
           title: 'Progress',
-          headerTitle: 'Consistency & Memory'
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'analytics' : 'analytics-outline'} size={22} color={color} />
+          )
         }}
       />
       <Tabs.Screen
         name="routine"
         options={{
           title: 'Routine',
-          headerTitle: 'Your Routine'
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'water' : 'water-outline'} size={22} color={color} />
+          )
         }}
       />
       <Tabs.Screen
         name="shelf"
         options={{
           title: 'My Shelf',
-          headerTitle: 'Product Shelf'
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'cube' : 'cube-outline'} size={22} color={color} />
+          )
         }}
       />
       <Tabs.Screen
         name="coach"
         options={{
           title: 'Coach',
-          headerTitle: 'AI Skin Coach'
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline'} size={22} color={color} />
+          )
         }}
       />
     </Tabs>

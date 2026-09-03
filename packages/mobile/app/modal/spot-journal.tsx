@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { colors, spacing, typography, radii } from '../../src/theme/tokens';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
 import { Card } from '../../src/components/Card';
 import { Button } from '../../src/components/Button';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
@@ -12,27 +14,36 @@ export default function SpotJournalModal() {
   const regions = ['Forehead', 'Left Cheek', 'Right Cheek', 'Nose', 'Chin', 'Jawline'];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={typography.captionBold}>VISUAL TRACKING</Text>
-        <Text style={[typography.h1, styles.title]}>Spot Journal</Text>
-        <Text style={typography.body}>
-          Track how a localized area changes over time (Day 1, 3, 7, 14). Observational tracking only.
+      <View style={styles.headerSection}>
+        <Text style={typography.eyebrow}>TARGETED APPEARANCE TRACKING</Text>
+        <Text style={styles.title}>Spot Journal</Text>
+        <Text style={styles.subtitle}>
+          Document how a localized cosmetic spot changes over time (Day 1, 3, 7, 14). Pure observational tracking to support calm skin consistency.
         </Text>
       </View>
 
       {/* Facial Region Selector */}
-      <View style={styles.sectionHeader}>
-        <Text style={typography.h3}>Area Location</Text>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>Area Location</Text>
+        <Text style={styles.sectionMeta}>Select Region</Text>
       </View>
       <View style={styles.regionGrid}>
         {regions.map(r => (
           <TouchableOpacity
             key={r}
+            activeOpacity={0.8}
             onPress={() => setSelectedRegion(r)}
             style={[styles.regionChip, selectedRegion === r && styles.regionChipActive]}
           >
+            {selectedRegion === r && (
+              <Ionicons name="checkmark-circle" size={13} color={colors.textInverse} style={{ marginRight: 4 }} />
+            )}
             <Text style={[styles.regionText, selectedRegion === r && styles.regionTextActive]}>
               {r}
             </Text>
@@ -43,59 +54,88 @@ export default function SpotJournalModal() {
       {/* Photo Capture Card */}
       <Card variant="elevated" style={styles.photoCard}>
         <View style={styles.cameraPlaceholder}>
-          <Text style={styles.cameraIcon}>📷</Text>
-          <Text style={typography.bodyBold}>Capture Close-Up Photo</Text>
-          <Text style={typography.caption}>Align the area in good lighting without flash</Text>
+          <View style={styles.cameraCircle}>
+            <Ionicons name="camera-outline" size={32} color={colors.primary} />
+          </View>
+          <Text style={styles.cameraTitle}>Capture Close-Up Macro</Text>
+          <Text style={styles.cameraSubtitle}>
+            Position the area in steady, shadow-free natural lighting.
+          </Text>
         </View>
+
         <Button
           title="Take Focused Photo"
-          onPress={() => alert('Focused close-up camera launched')}
+          variant="primary"
+          icon={<Ionicons name="aperture-outline" size={18} color={colors.textInverse} />}
+          onPress={() => alert('Launching focused macro camera...')}
           style={{ marginTop: spacing.md }}
         />
       </Card>
 
       {/* Sensation / Tenderness Check */}
-      <View style={styles.sectionHeader}>
-        <Text style={typography.h3}>Sensation Check</Text>
-        <Text style={typography.caption}>Does this area feel uncomfortable?</Text>
+      <View style={[styles.sectionHeaderRow, { marginTop: spacing.lg }]}>
+        <Text style={styles.sectionTitle}>Sensation Check</Text>
+        <Text style={styles.sectionMeta}>Self-Reported</Text>
       </View>
 
       <View style={styles.tendernessRow}>
         {(['none', 'mild', 'severe'] as const).map(t => (
           <TouchableOpacity
             key={t}
+            activeOpacity={0.8}
             onPress={() => setTenderness(t)}
-            style={[styles.tendernessBtn, tenderness === t && styles.tendernessBtnActive]}
+            style={[
+              styles.tendernessBtn,
+              tenderness === t && (t === 'severe' ? styles.tendernessBtnSevere : styles.tendernessBtnActive)
+            ]}
           >
-            <Text style={[styles.tendernessText, tenderness === t && styles.tendernessTextActive]}>
+            <Text
+              style={[
+                styles.tendernessText,
+                tenderness === t && (t === 'severe' ? styles.tendernessTextSevere : styles.tendernessTextActive)
+              ]}
+            >
               {t === 'none' ? 'No Discomfort' : t === 'mild' ? 'Mild Sensation' : 'Severe Pain'}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Safety Escalation Alert if Severe Pain */}
+      {/* Safety Escalation Alert if Severe */}
       {tenderness === 'severe' && (
         <Card variant="subtle" style={styles.escalationCard}>
-          <Text style={[typography.captionBold, { color: colors.terracotta }]}>
-            MEDICAL ATTENTION ADVISABLE
-          </Text>
-          <Text style={[typography.caption, { marginTop: spacing.xs, color: colors.textPrimary }]}>
-            If this spot is causing severe pain, rapid swelling, heat, or spreading redness, please do not squeeze or pick at it. Consult a physician or board-certified dermatologist for safe in-person evaluation.
+          <View style={styles.escalationHeader}>
+            <Ionicons name="alert-circle" size={18} color={colors.terracotta} />
+            <Text style={styles.escalationTitle}>PROFESSIONAL CARE RECOMMENDED</Text>
+          </View>
+          <Text style={styles.escalationBody}>
+            If this spot is causing sharp pain, rapid swelling, or spreading warmth, please avoid touching or picking it. Have it evaluated by a board-certified dermatologist or qualified healthcare practitioner.
           </Text>
         </Card>
       )}
 
-      {/* Visual Timeline Preview */}
-      <View style={[styles.sectionHeader, { marginTop: spacing.xl }]}>
-        <Text style={typography.h3}>Tracking Schedule</Text>
+      {/* Tracking Schedule */}
+      <View style={[styles.sectionHeaderRow, { marginTop: spacing.xl }]}>
+        <Text style={styles.sectionTitle}>Progression Milestones</Text>
       </View>
 
-      <Card variant="subtle" style={{ marginBottom: spacing.xl }}>
-        <Text style={styles.timelineItem}>• Day 1: Initial baseline photo</Text>
-        <Text style={styles.timelineItem}>• Day 3: First progression check-in</Text>
-        <Text style={styles.timelineItem}>• Day 7: One-week milestone</Text>
-        <Text style={styles.timelineItem}>• Day 14: Two-week comparison</Text>
+      <Card variant="subtle" style={styles.scheduleCard}>
+        <View style={styles.milestoneRow}>
+          <Text style={styles.milestoneDot}>•</Text>
+          <Text style={styles.milestoneItem}><Text style={styles.boldSpan}>Day 1:</Text> Initial baseline photo</Text>
+        </View>
+        <View style={styles.milestoneRow}>
+          <Text style={styles.milestoneDot}>•</Text>
+          <Text style={styles.milestoneItem}><Text style={styles.boldSpan}>Day 3:</Text> First progression check-in</Text>
+        </View>
+        <View style={styles.milestoneRow}>
+          <Text style={styles.milestoneDot}>•</Text>
+          <Text style={styles.milestoneItem}><Text style={styles.boldSpan}>Day 7:</Text> One-week milestone comparison</Text>
+        </View>
+        <View style={styles.milestoneRow}>
+          <Text style={styles.milestoneDot}>•</Text>
+          <Text style={styles.milestoneItem}><Text style={styles.boldSpan}>Day 14:</Text> Two-week recovery review</Text>
+        </View>
       </Card>
 
       <DisclaimerBar showAffiliate={false} />
@@ -104,7 +144,7 @@ export default function SpotJournalModal() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: colors.background
   },
@@ -112,54 +152,94 @@ const styles = StyleSheet.create({
     padding: spacing.base,
     paddingBottom: spacing.huge
   },
-  header: {
+  headerSection: {
     marginBottom: spacing.base
   },
   title: {
-    marginTop: spacing.xs,
+    ...typography.display,
+    fontSize: 28,
+    lineHeight: 34,
+    marginTop: spacing.xxs,
     marginBottom: spacing.xs
   },
-  sectionHeader: {
-    marginVertical: spacing.sm
+  subtitle: {
+    ...typography.body,
+    fontSize: 14,
+    lineHeight: 20
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm
+  },
+  sectionTitle: {
+    ...typography.h3,
+    fontSize: 16
+  },
+  sectionMeta: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textTertiary
   },
   regionGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: spacing.md
+    marginBottom: spacing.lg
   },
   regionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.xs + 2,
+    borderColor: colors.borderLight,
+    paddingVertical: spacing.xs + 3,
     paddingHorizontal: spacing.md,
     borderRadius: radii.full,
     marginRight: spacing.xs,
-    marginBottom: spacing.xs
+    marginBottom: spacing.xs,
+    ...shadows.subtle
   },
   regionChipActive: {
-    backgroundColor: colors.sage,
-    borderColor: colors.sage
+    backgroundColor: colors.primary,
+    borderColor: colors.primary
   },
   regionText: {
-    ...typography.captionBold,
+    fontSize: 12,
+    fontWeight: '600',
     color: colors.textSecondary
   },
   regionTextActive: {
     color: colors.textInverse
   },
   photoCard: {
-    padding: spacing.lg,
+    padding: spacing.xl,
     alignItems: 'center',
-    marginBottom: spacing.md
+    marginBottom: spacing.base
   },
   cameraPlaceholder: {
     alignItems: 'center',
-    paddingVertical: spacing.lg
-  },
-  cameraIcon: {
-    fontSize: 36,
     marginBottom: spacing.sm
+  },
+  cameraCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: radii.full,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.md
+  },
+  cameraTitle: {
+    ...typography.h3,
+    fontSize: 17,
+    marginBottom: 2
+  },
+  cameraSubtitle: {
+    ...typography.caption,
+    fontSize: 13,
+    color: colors.textSecondary,
+    textAlign: 'center'
   },
   tendernessRow: {
     flexDirection: 'row',
@@ -169,33 +249,80 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.md,
+    borderColor: colors.borderLight,
+    paddingVertical: spacing.sm + 2,
     alignItems: 'center',
-    marginRight: spacing.xs
+    borderRadius: radii.lg,
+    marginHorizontal: 3,
+    ...shadows.subtle
   },
   tendernessBtnActive: {
-    backgroundColor: colors.calmFocus,
-    borderColor: colors.calmFocus
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primaryLight
+  },
+  tendernessBtnSevere: {
+    backgroundColor: colors.terracottaLight,
+    borderColor: colors.terracotta
   },
   tendernessText: {
-    ...typography.captionBold,
-    color: colors.textSecondary,
-    fontSize: 12
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary
   },
   tendernessTextActive: {
-    color: colors.textInverse
+    color: colors.primary,
+    fontWeight: '700'
+  },
+  tendernessTextSevere: {
+    color: colors.terracotta,
+    fontWeight: '700'
   },
   escalationCard: {
     backgroundColor: colors.terracottaLight,
     borderLeftWidth: 3,
     borderLeftColor: colors.terracotta,
-    marginBottom: spacing.md
+    padding: spacing.base,
+    marginBottom: spacing.base
   },
-  timelineItem: {
+  escalationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs
+  },
+  escalationTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+    color: colors.terracotta,
+    marginLeft: 6
+  },
+  escalationBody: {
     ...typography.caption,
-    color: colors.textSecondary,
-    marginBottom: 4
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.textPrimary
+  },
+  scheduleCard: {
+    padding: spacing.base,
+    marginBottom: spacing.xl
+  },
+  milestoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs + 2
+  },
+  milestoneDot: {
+    fontSize: 16,
+    color: colors.goldDark,
+    marginRight: spacing.sm
+  },
+  milestoneItem: {
+    ...typography.caption,
+    fontSize: 13,
+    color: colors.textSecondary
+  },
+  boldSpan: {
+    fontWeight: '700',
+    color: colors.textPrimary
   }
 });
