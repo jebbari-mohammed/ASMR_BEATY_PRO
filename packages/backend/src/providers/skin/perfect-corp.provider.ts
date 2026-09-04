@@ -18,42 +18,67 @@ export class PerfectCorpSkinProvider implements SkinAnalysisProvider {
 
   async analyzeSkin(session: ScanSession, imageBuffer: Buffer): Promise<NormalizedSkinAnalysis> {
     const base64Image = imageBuffer.toString('base64');
+    const dataUri = `data:image/jpeg;base64,${base64Image}`;
 
-    // Vendor API payload with strict ephemeral privacy parameter: save_image = false
+    // Official YouCam S2S v2.0 task actions
     const payload = {
-      image_data: `data:image/jpeg;base64,${base64Image}`,
-      options: {
-        save_image: false, // Critical: user images must NOT be retained by vendor
-        enable_metrics: [
-          'spots',
-          'wrinkles',
-          'texture',
-          'dark_circles',
-          'redness',
-          'oiliness',
-          'pores'
-        ]
-      }
+      src_file_url: dataUri,
+      dst_actions: [
+        'wrinkle',
+        'pore',
+        'texture',
+        'acne',
+        'redness',
+        'oiliness',
+        'dark_circle_v2'
+      ]
     };
 
     let responseData: any;
 
     try {
-      const response = await fetch(`${this.config.baseUrl}/skin-analysis`, {
+      const taskRes = await fetch(`${this.config.baseUrl}/task/skin-analysis`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-API-KEY': this.config.apiKey,
-          'X-API-SECRET': this.config.apiSecret
+          'Authorization': `Bearer ${this.config.apiKey}`
         },
         body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error(`Perfect Corp API responded with status ${response.status}: ${await response.text()}`);
+      if (!taskRes.ok) {
+        const errText = await taskRes.text();
+        throw new Error(`YouCam API responded with status ${taskRes.status}: ${errText}`);
       }
 
-      responseData = await response.json();
+      const taskJson: any = await taskRes.json();
+      const taskId = taskJson.data?.task_id || taskJson.task_id;
+
+      // If asynchronous task, poll for results
+      if (taskId && taskJson.data?.status !== 'success') {
+        let isDone = false;
+        let attempts = 0;
+        while (!isDone && attempts < 15) {
+          await new Promise((r) => setTimeout(r, 1000));
+          attempts++;
+          const pollRes = await fetch(`${this.config.baseUrl}/task/skin-analysis/${taskId}`, {
+            headers: {
+              'Authorization': `Bearer ${this.config.apiKey}`
+            }
+          });
+          if (pollRes.ok) {
+            const pollJson: any = await pollRes.json();
+            if (pollJson.data?.status === 'success' || pollJson.status === 'success') {
+              responseData = pollJson.data?.results || pollJson.results || pollJson;
+              isDone = true;
+            } else if (pollJson.data?.status === 'error' || pollJson.status === 'error') {
+              throw new Error(`YouCam analysis task failed: ${JSON.stringify(pollJson)}`);
+            }
+          }
+        }
+      } else {
+        responseData = taskJson.data?.results || taskJson.results || taskJson;
+      }
     } catch (err: any) {
       throw new Error(`Failed to call Perfect Corp Skin Analysis API: ${err.message}`);
     }

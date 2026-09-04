@@ -97,7 +97,7 @@ export const processSkinScanSession = onCall(
     const provider = new PerfectCorpSkinProvider({
       apiKey,
       apiSecret,
-      baseUrl: 'https://yce.perfectcorp.com/api'
+      baseUrl: 'https://yce-api-01.makeupar.com/s2s/v2.0'
     });
 
     const stateMachine = new ScanStateMachine(provider, store);
