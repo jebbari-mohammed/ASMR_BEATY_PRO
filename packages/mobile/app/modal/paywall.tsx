@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   Image,
   Alert,
-  Platform
+  Platform,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,38 +16,90 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
 import { localImages } from '../../src/theme/images';
-
-type PlanType = 'annual' | 'monthly';
+import { SubscriptionService } from '../../src/services/subscription-service';
+import { SubscriptionOfferingPayload, SubscriptionPlanOffering } from '@asmr/shared';
 
 export default function PaywallModal() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [selectedPlan, setSelectedPlan] = useState<PlanType>('annual');
+  const [offering, setOffering] = useState<SubscriptionOfferingPayload | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [loadingOffering, setLoadingOffering] = useState(true);
+
+  useEffect(() => {
+    async function loadOffering() {
+      try {
+        const data = await SubscriptionService.getOffering();
+        setOffering(data);
+        setSelectedPlanId(data.defaultPlanId);
+      } catch (err) {
+        console.warn('Failed to load subscription offering:', err);
+      } finally {
+        setLoadingOffering(false);
+      }
+    }
+    loadOffering();
+  }, []);
+
+  const selectedPlan: SubscriptionPlanOffering | undefined = offering?.plans.find(
+    (p) => p.id === selectedPlanId
+  ) || offering?.plans[0];
 
   const handleSubscribe = async () => {
+    if (!selectedPlan) return;
     setIsProcessing(true);
-    // Simulate StoreKit / Google Play Billing purchase
-    setTimeout(() => {
+    try {
+      const res = await SubscriptionService.purchasePlan(selectedPlan.id);
       setIsProcessing(false);
-      Alert.alert(
-        'Welcome to Pro',
-        'Your 42-Day Skin Consistency Program is now unlocked! Enjoy your 7-day free trial.',
-        [
-          {
-            text: 'Let’s Go',
-            onPress: () => router.back()
-          }
-        ]
-      );
-    }, 1000);
+      if (res.success) {
+        Alert.alert(
+          'Welcome to Pro',
+          selectedPlan.hasFreeTrial
+            ? 'Your 7-day free trial is now active! All Pro features are unlocked.'
+            : 'Your subscription is now active! All Pro features are unlocked.',
+          [
+            {
+              text: 'Let’s Go',
+              onPress: () => router.back()
+            }
+          ]
+        );
+      }
+    } catch (err: any) {
+      setIsProcessing(false);
+      Alert.alert('Purchase Error', err?.message || 'Unable to complete transaction. Please try again.');
+    }
   };
 
-  const handleRestore = () => {
-    Alert.alert('Restore Purchases', 'Searching your App Store / Google Play account for active subscriptions...', [
-      { text: 'OK' }
-    ]);
+  const handleRestore = async () => {
+    setIsProcessing(true);
+    try {
+      const isEntitled = await SubscriptionService.verifyEntitlementServerSide('current_user');
+      setIsProcessing(false);
+      if (isEntitled) {
+        Alert.alert('Purchases Restored', 'Your Pro subscription has been verified.', [
+          { text: 'OK', onPress: () => router.back() }
+        ]);
+      } else {
+        Alert.alert('Restore Purchases', 'No active subscription found for this account.');
+      }
+    } catch (err: any) {
+      setIsProcessing(false);
+      Alert.alert('Restore Error', 'Could not restore purchases. Please check your network connection.');
+    }
   };
+
+  if (loadingOffering || !offering) {
+    return (
+      <View style={[styles.screen, styles.centerContent, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[typography.caption, { marginTop: spacing.md, color: colors.textSecondary }]}>
+          Loading subscription options...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
@@ -74,10 +127,8 @@ export default function PaywallModal() {
         {/* Hero Section */}
         <View style={styles.heroSection}>
           <Text style={typography.eyebrow}>42-DAY SKIN CONSISTENCY</Text>
-          <Text style={styles.heroTitle}>Your skin doesn’t need miracles.{'\n'}It needs consistency.</Text>
-          <Text style={styles.heroSubtitle}>
-            Unlock full longitudinal skin memory, weekly calibrated snapshots, and proactive ingredient intelligence.
-          </Text>
+          <Text style={styles.heroTitle}>{offering.headline}</Text>
+          <Text style={styles.heroSubtitle}>{offering.supportingCopy}</Text>
         </View>
 
         {/* Real Macro Visual Timeline Card */}
@@ -177,60 +228,46 @@ export default function PaywallModal() {
 
         {/* Plan Selector */}
         <View style={styles.planSelector}>
-          {/* Annual Plan */}
-          <TouchableOpacity
-            style={[
-              styles.planCard,
-              selectedPlan === 'annual' && styles.planCardSelected
-            ]}
-            activeOpacity={0.85}
-            onPress={() => setSelectedPlan('annual')}
-          >
-            <View style={styles.planBadgeRibbon}>
-              <Text style={styles.planBadgeRibbonText}>BEST VALUE • SAVE 52%</Text>
-            </View>
-            <View style={styles.planCardContent}>
-              <View style={styles.planRadioRow}>
-                <View style={[styles.radioOuter, selectedPlan === 'annual' && styles.radioOuterSelected]}>
-                  {selectedPlan === 'annual' && <View style={styles.radioInner} />}
+          {offering.plans.map((plan) => {
+            const isSelected = plan.id === selectedPlan?.id;
+            return (
+              <TouchableOpacity
+                key={plan.id}
+                style={[styles.planCard, isSelected && styles.planCardSelected]}
+                activeOpacity={0.85}
+                onPress={() => setSelectedPlanId(plan.id)}
+              >
+                {plan.badgeLabel ? (
+                  <View style={styles.planBadgeRibbon}>
+                    <Text style={styles.planBadgeRibbonText}>{plan.badgeLabel}</Text>
+                  </View>
+                ) : null}
+                <View style={styles.planCardContent}>
+                  <View style={styles.planRadioRow}>
+                    <View style={[styles.radioOuter, isSelected && styles.radioOuterSelected]}>
+                      {isSelected && <View style={styles.radioInner} />}
+                    </View>
+                    <View style={styles.planTitles}>
+                      <Text style={styles.planName}>{plan.title}</Text>
+                      {plan.hasFreeTrial ? (
+                        <Text style={styles.planTrialLabel}>Includes {plan.trialDays}-Day Free Trial</Text>
+                      ) : (
+                        <Text style={styles.planTrialLabel}>Instant activation</Text>
+                      )}
+                    </View>
+                    <View style={styles.planPriceCol}>
+                      <Text style={styles.planPriceMain}>${plan.priceUsd.toFixed(2)}</Text>
+                      <Text style={styles.planPerMonth}>
+                        {plan.billingPeriod === 'annual'
+                          ? `$${plan.perMonthEquivalentUsd.toFixed(2)} / mo`
+                          : 'per month'}
+                      </Text>
+                    </View>
+                  </View>
                 </View>
-                <View style={styles.planTitles}>
-                  <Text style={styles.planName}>Annual Program</Text>
-                  <Text style={styles.planTrialLabel}>Includes 7-Day Free Trial</Text>
-                </View>
-                <View style={styles.planPriceCol}>
-                  <Text style={styles.planPriceMain}>$39.99</Text>
-                  <Text style={styles.planPerMonth}>$3.33 / month</Text>
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
-
-          {/* Monthly Plan */}
-          <TouchableOpacity
-            style={[
-              styles.planCard,
-              selectedPlan === 'monthly' && styles.planCardSelected
-            ]}
-            activeOpacity={0.85}
-            onPress={() => setSelectedPlan('monthly')}
-          >
-            <View style={styles.planCardContent}>
-              <View style={styles.planRadioRow}>
-                <View style={[styles.radioOuter, selectedPlan === 'monthly' && styles.radioOuterSelected]}>
-                  {selectedPlan === 'monthly' && <View style={styles.radioInner} />}
-                </View>
-                <View style={styles.planTitles}>
-                  <Text style={styles.planName}>Monthly Subscription</Text>
-                  <Text style={styles.planTrialLabel}>Flexible month-to-month</Text>
-                </View>
-                <View style={styles.planPriceCol}>
-                  <Text style={styles.planPriceMain}>$6.99</Text>
-                  <Text style={styles.planPerMonth}>per month</Text>
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Action Button */}
@@ -247,27 +284,31 @@ export default function PaywallModal() {
             style={styles.subscribeGradient}
           >
             <Text style={styles.subscribeBtnText}>
-              {selectedPlan === 'annual'
-                ? 'Start My 7-Day Free Trial'
-                : 'Subscribe for $6.99 / month'}
+              {isProcessing
+                ? 'Verifying...'
+                : selectedPlan?.hasFreeTrial
+                ? `Start My ${selectedPlan.trialDays}-Day Free Trial`
+                : offering.primaryCtaText}
             </Text>
             <Ionicons name="arrow-forward" size={18} color={colors.textInverse} />
           </LinearGradient>
         </TouchableOpacity>
 
         <Text style={styles.trialTerms}>
-          {selectedPlan === 'annual'
-            ? 'Free for 7 days, then $39.99/year. Cancel anytime in App Store settings.'
-            : 'Billed monthly. Cancel anytime in account settings before renewal.'}
+          {selectedPlan?.hasFreeTrial
+            ? `Free for ${selectedPlan.trialDays} days, then $${selectedPlan.priceUsd}/year. Cancel anytime in App Store settings.`
+            : selectedPlan?.billingPeriod === 'annual'
+            ? `$${selectedPlan.priceUsd}/year billed annually. Cancel anytime in account settings.`
+            : `Billed monthly at $${selectedPlan?.priceUsd}/month. Cancel anytime in account settings.`}
         </Text>
 
-        {/* Escape Hatch */}
+        {/* Dismiss Option */}
         <TouchableOpacity
           style={styles.freeEscapeHatch}
           activeOpacity={0.7}
           onPress={() => router.back()}
         >
-          <Text style={styles.freeEscapeText}>Continue with Free Version (1 snapshot/week)</Text>
+          <Text style={styles.freeEscapeText}>Maybe Later</Text>
         </TouchableOpacity>
 
         {/* Legal & Compliance Footer */}
@@ -298,6 +339,11 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background
+  },
+  centerContent: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl
   },
   topNav: {
     flexDirection: 'row',

@@ -27,31 +27,36 @@ import {
   SunscreenHabitOption,
   BudgetPreferenceOption,
   ProductAvoidanceOption,
-  PrimaryMotivationOption
+  PrimaryMotivationOption,
+  SubscriptionOfferingPayload,
+  SubscriptionPlanOffering
 } from '@asmr/shared';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
 import { localImages } from '../../src/theme/images';
 import { useOnboarding } from '../../src/hooks/useOnboarding';
+import { SubscriptionService } from '../../src/services/subscription-service';
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ step?: string }>();
+  const params = useLocalSearchParams<{ step?: string; variant?: string }>();
   const insets = useSafeAreaInsets();
   const { state, loading, next, back, complete, updateState } = useOnboarding();
 
-  useEffect(() => {
-    if (!loading && params.step) {
-      updateState({ currentStep: params.step as OnboardingStep });
-    }
-  }, [params.step, loading]);
+  // Dynamic Subscription Offering
+  const [offering, setOffering] = useState<SubscriptionOfferingPayload | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('pro_annual_3999_7dt');
+  const [isPurchasing, setIsPurchasing] = useState(false);
 
-  // Scan simulation state
+  // Scan & On-Device QA simulation state
   const [scanProgress, setScanProgress] = useState(0);
   const [scanStatusText, setScanStatusText] = useState('Position your face');
   const [isScanning, setIsScanning] = useState(false);
 
   // Soft age gate modal state
   const [showUnderageNotice, setShowUnderageNotice] = useState(false);
+
+  // Processing cloud scan simulation state (post-payment)
+  const [cloudProcessStep, setCloudProcessStep] = useState(0);
 
   // Plan generation simulation state
   const [genStep, setGenStep] = useState(0);
@@ -62,6 +67,15 @@ export default function OnboardingScreen() {
   const [selectedAvoids, setSelectedAvoids] = useState<ProductAvoidanceOption[]>(state.productPreferencesToAvoid || []);
 
   useEffect(() => {
+    async function loadOffering() {
+      const off = await SubscriptionService.getOffering(params.variant as any);
+      setOffering(off);
+      setSelectedPlanId(off.defaultPlanId);
+    }
+    loadOffering();
+  }, [params.variant]);
+
+  useEffect(() => {
     if (state.selectedGoals) setSelectedGoals(state.selectedGoals);
     if (state.currentActives) setSelectedActives(state.currentActives);
     if (state.productPreferencesToAvoid) setSelectedAvoids(state.productPreferencesToAvoid);
@@ -69,6 +83,25 @@ export default function OnboardingScreen() {
 
   const activeStep: OnboardingStep = (params.step as OnboardingStep) || state.currentStep;
 
+  // Auto-run cloud scan processing when reaching PROCESSING_SCAN
+  useEffect(() => {
+    if (activeStep === 'PROCESSING_SCAN') {
+      setCloudProcessStep(1);
+      const t1 = setTimeout(() => setCloudProcessStep(2), 700);
+      const t2 = setTimeout(() => setCloudProcessStep(3), 1500);
+      const t3 = setTimeout(() => {
+        setCloudProcessStep(4);
+        setTimeout(() => next('WOW_SNAPSHOT'), 500);
+      }, 2300);
+      return () => {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
+      };
+    }
+  }, [activeStep]);
+
+  // Auto-run plan gen when reaching PLAN_GENERATION
   useEffect(() => {
     if (activeStep === 'PLAN_GENERATION' && genStep === 0) {
       handleStartPlanGen();
@@ -83,38 +116,60 @@ export default function OnboardingScreen() {
     );
   }
 
-  // Handle guided scan simulation
-  const handleStartScan = () => {
+  // Handle guided on-device scan simulation (FREE / LOCAL QA ONLY)
+  const handleStartOnDeviceScan = () => {
     setIsScanning(true);
     setScanProgress(0);
-    setScanStatusText('Checking photo quality & lighting...');
+    setScanStatusText('Verifying face centering & lighting...');
 
     setTimeout(() => {
-      setScanProgress(0.3);
-      setScanStatusText('Mapping visible skin features...');
-    }, 900);
+      setScanProgress(0.4);
+      setScanStatusText('Analyzing focal distance & 5200K daylight...');
+    }, 800);
 
     setTimeout(() => {
-      setScanProgress(0.7);
-      setScanStatusText('Analyzing hydration & pore balance...');
-    }, 1800);
+      setScanProgress(0.85);
+      setScanStatusText('Local optical verification complete!');
+    }, 1600);
 
     setTimeout(() => {
       setScanProgress(1.0);
-      setScanStatusText('Snapshot complete!');
-      setTimeout(() => {
-        setIsScanning(false);
-        next('WOW_SNAPSHOT');
-      }, 600);
-    }, 2600);
+      setIsScanning(false);
+      next('PRE_PAYWALL_READY');
+    }, 2200);
+  };
+
+  // Handle Paywall Purchase -> Verify server entitlement -> Advance to PROCESSING_SCAN
+  const handlePaywallPurchase = async () => {
+    setIsPurchasing(true);
+    try {
+      // 1. Client completes purchase
+      await SubscriptionService.purchasePlan(selectedPlanId);
+
+      // 2. Server entitlement verification check
+      const isEntitled = await SubscriptionService.verifyEntitlementServerSide('usr_current');
+      setIsPurchasing(false);
+
+      if (isEntitled) {
+        next('PROCESSING_SCAN', {
+          hasSubscribedAtPaywall: true,
+          subscribedPlanId: selectedPlanId
+        });
+      } else {
+        Alert.alert('Subscription Pending', 'Verifying your membership with the App Store. Please try again in a moment.');
+      }
+    } catch (err: any) {
+      setIsPurchasing(false);
+      Alert.alert('Purchase Error', err.message || 'Unable to complete purchase.');
+    }
   };
 
   // Handle plan generation simulation
   const handleStartPlanGen = () => {
     setGenStep(1);
-    setTimeout(() => setGenStep(2), 800);
-    setTimeout(() => setGenStep(3), 1600);
-    setTimeout(() => setGenStep(4), 2400);
+    setTimeout(() => setGenStep(2), 700);
+    setTimeout(() => setGenStep(3), 1400);
+    setTimeout(() => setGenStep(4), 2100);
   };
 
   // Toggle helpers for multi-select
@@ -177,37 +232,40 @@ export default function OnboardingScreen() {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
-      {/* Top Header Navigation (for questions after welcome) */}
-      {activeStep !== 'WELCOME' && activeStep !== 'PLAN_GENERATION' && (
-        <View style={styles.navHeader}>
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={back}
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-          </TouchableOpacity>
+      {/* Top Header Navigation */}
+      {activeStep !== 'WELCOME' &&
+        activeStep !== 'HARD_PAYWALL' &&
+        activeStep !== 'PROCESSING_SCAN' &&
+        activeStep !== 'PLAN_GENERATION' && (
+          <View style={styles.navHeader}>
+            <TouchableOpacity
+              style={styles.backBtn}
+              onPress={back}
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+            </TouchableOpacity>
 
-          {currentStepNum && (
-            <View style={styles.stepProgressPill}>
-              <Text style={styles.stepProgressText}>STEP {currentStepNum} OF 13</Text>
-            </View>
-          )}
+            {currentStepNum && (
+              <View style={styles.stepProgressPill}>
+                <Text style={styles.stepProgressText}>STEP {currentStepNum} OF 13</Text>
+              </View>
+            )}
 
-          <TouchableOpacity
-            style={styles.skipBtn}
-            onPress={() => {
-              if (currentStepNum) {
-                next('PLAN_GENERATION');
-              }
-            }}
-          >
-            {currentStepNum ? <Text style={styles.skipBtnText}>Skip</Text> : <View style={{ width: 40 }} />}
-          </TouchableOpacity>
-        </View>
-      )}
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={() => {
+                if (currentStepNum) {
+                  next('PLAN_GENERATION');
+                }
+              }}
+            >
+              {currentStepNum ? <Text style={styles.skipBtnText}>Skip</Text> : <View style={{ width: 40 }} />}
+            </TouchableOpacity>
+          </View>
+        )}
 
-      {/* STEP: WELCOME */}
+      {/* STEP 1: WELCOME */}
       {activeStep === 'WELCOME' && (
         <ScrollView
           style={styles.container}
@@ -275,7 +333,7 @@ export default function OnboardingScreen() {
         </ScrollView>
       )}
 
-      {/* STEP: AGE GATE */}
+      {/* STEP 2: AGE GATE */}
       {activeStep === 'AGE_GATE' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -294,7 +352,7 @@ export default function OnboardingScreen() {
             >
               <View style={styles.optionContent}>
                 <Text style={styles.optionTitle}>Yes, I'm 18 or older</Text>
-                <Text style={styles.optionDesc}>Continue to establish your baseline skin snapshot.</Text>
+                <Text style={styles.optionDesc}>Continue to select your cosmetic goals.</Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color={colors.primary} />
             </TouchableOpacity>
@@ -330,7 +388,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: GOALS */}
+      {/* STEP 3: GOALS */}
       {activeStep === 'GOALS' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -378,7 +436,7 @@ export default function OnboardingScreen() {
               style={[styles.primaryBtn, selectedGoals.length === 0 && styles.primaryBtnDisabled]}
               disabled={selectedGoals.length === 0}
               activeOpacity={0.85}
-              onPress={() => next('PHOTO_PRIVACY', { selectedGoals })}
+              onPress={() => next('SNAPSHOT_EXPLAINER', { selectedGoals })}
             >
               <LinearGradient
                 colors={[colors.primary, colors.primaryLight]}
@@ -394,7 +452,88 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: PHOTO PRIVACY */}
+      {/* STEP 4: SNAPSHOT EXPLAINER */}
+      {activeStep === 'SNAPSHOT_EXPLAINER' && (
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.explainerContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.questionHeader}>
+            <Text style={typography.eyebrow}>CALIBRATED ANALYSIS</Text>
+            <Text style={styles.questionTitle}>What your Skin Snapshot will analyze</Text>
+            <Text style={styles.questionSubtitle}>
+              Before you look into the camera, here is how our computer vision maps your cosmetic baseline:
+            </Text>
+          </View>
+
+          <View style={styles.explainerCardList}>
+            <View style={styles.explainerItem}>
+              <View style={styles.explainerIconWrap}>
+                <Ionicons name="water-outline" size={20} color={colors.primary} />
+              </View>
+              <View style={styles.explainerTextWrap}>
+                <Text style={styles.explainerItemTitle}>Surface Hydration Balance</Text>
+                <Text style={styles.explainerItemDesc}>
+                  Measures moisture retention across your cheeks and forehead to prevent barrier dehydration.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.explainerItem}>
+              <View style={styles.explainerIconWrap}>
+                <Ionicons name="leaf-outline" size={20} color={colors.terracotta} />
+              </View>
+              <View style={styles.explainerTextWrap}>
+                <Text style={styles.explainerItemTitle}>Visible Surface Redness</Text>
+                <Text style={styles.explainerItemDesc}>
+                  Observes capillary flush and surface reactivity to pinpoint soothing active needs.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.explainerItem}>
+              <View style={styles.explainerIconWrap}>
+                <Ionicons name="sparkles-outline" size={20} color={colors.goldDark} />
+              </View>
+              <View style={styles.explainerTextWrap}>
+                <Text style={styles.explainerItemTitle}>Pore Appearance & Texture</Text>
+                <Text style={styles.explainerItemDesc}>
+                  Analyzes micro-texture smoothness, shine balance, and T-zone oil distribution.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.explainerItem}>
+              <View style={styles.explainerIconWrap}>
+                <Ionicons name="shield-checkmark-outline" size={20} color={colors.routineDone} />
+              </View>
+              <View style={styles.explainerTextWrap}>
+                <Text style={styles.explainerItemTitle}>Ingredient Compatibility</Text>
+                <Text style={styles.explainerItemDesc}>
+                  Screens products before you use them to prevent conflicting actives and skin irritation.
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            activeOpacity={0.85}
+            onPress={() => next('PHOTO_PRIVACY')}
+          >
+            <LinearGradient
+              colors={[colors.primary, colors.primaryLight]}
+              style={styles.primaryBtnGradient}
+            >
+              <Text style={styles.primaryBtnText}>Open Camera Preview</Text>
+              <Ionicons name="arrow-forward" size={18} color={colors.textInverse} />
+            </LinearGradient>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+
+      {/* STEP 5: PHOTO PRIVACY */}
       {activeStep === 'PHOTO_PRIVACY' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -421,7 +560,7 @@ export default function OnboardingScreen() {
               </View>
               <Text style={styles.privacyTitle}>Save progress photos</Text>
               <Text style={styles.privacyDesc}>
-                Store photos encrypted in your private account so you can visually compare Day 1 vs Day 14, 30, and 42 changes.
+                Store photos securely encrypted so you can visually compare Day 1 vs Day 14, 30, and 42 changes.
               </Text>
             </TouchableOpacity>
 
@@ -454,7 +593,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: GUIDED SCAN */}
+      {/* STEP 6: GUIDED SCAN (FREE / ON-DEVICE QA ONLY) */}
       {activeStep === 'GUIDED_SCAN' && (
         <View style={styles.scanScreenContainer}>
           <View style={styles.scanReticleContainer}>
@@ -463,10 +602,8 @@ export default function OnboardingScreen() {
               style={styles.scanBackdropImage}
               resizeMode="cover"
             />
-            {/* Dark glass overlay */}
             <View style={styles.scanOverlay} />
 
-            {/* Reticle Oval */}
             <View style={styles.faceOvalReticle}>
               <View style={styles.reticleCornerTL} />
               <View style={styles.reticleCornerTR} />
@@ -480,7 +617,6 @@ export default function OnboardingScreen() {
               )}
             </View>
 
-            {/* Guidance status chip */}
             <View style={styles.guidanceChip}>
               <View style={[styles.guidanceDot, isScanning && styles.guidanceDotActive]} />
               <Text style={styles.guidanceChipText}>{scanStatusText}</Text>
@@ -496,7 +632,7 @@ export default function OnboardingScreen() {
               <TouchableOpacity
                 style={styles.shutterBtnOuter}
                 activeOpacity={0.8}
-                onPress={handleStartScan}
+                onPress={handleStartOnDeviceScan}
               >
                 <View style={styles.shutterBtnInner} />
               </TouchableOpacity>
@@ -512,7 +648,246 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: WOW SNAPSHOT */}
+      {/* STEP 7: PRE_PAYWALL_READY (CURIOSITY BRIDGE) */}
+      {activeStep === 'PRE_PAYWALL_READY' && (
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.prePaywallContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.readyBadgePill}>
+            <Ionicons name="checkmark-circle" size={14} color={colors.routineDone} />
+            <Text style={styles.readyBadgeText}>OPTICAL QA PASSED</Text>
+          </View>
+
+          <Text style={styles.readyHeroTitle}>You're ready for your{'\n'}Skin Snapshot</Text>
+          <Text style={styles.readyHeroSubtitle}>
+            Your camera capture passed all on-device quality checks. Your photo is framed with clean daylight clarity.
+          </Text>
+
+          {/* Locked Preview Card */}
+          <View style={styles.lockedPreviewCard}>
+            <View style={styles.previewThumbRow}>
+              <Image source={localImages.skinBefore} style={styles.previewThumb} />
+              <View style={styles.previewThumbInfo}>
+                <Text style={styles.previewThumbTitle}>Baseline Capture #1</Text>
+                <Text style={styles.previewThumbMeta}>5200K Daylight Match • Frontal Angle</Text>
+                <View style={styles.statusPill}>
+                  <Text style={styles.statusPillText}>READY FOR ANALYSIS</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.lockedItemsList}>
+              <View style={styles.lockedItemRow}>
+                <Ionicons name="lock-closed" size={14} color={colors.goldDark} />
+                <Text style={styles.lockedItemText}>Surface Hydration & Moisture Barrier Index</Text>
+              </View>
+              <View style={styles.lockedItemRow}>
+                <Ionicons name="lock-closed" size={14} color={colors.goldDark} />
+                <Text style={styles.lockedItemText}>Visible Redness & Calmness Mapping</Text>
+              </View>
+              <View style={styles.lockedItemRow}>
+                <Ionicons name="lock-closed" size={14} color={colors.goldDark} />
+                <Text style={styles.lockedItemText}>Pore Appearance & Texture Metrics</Text>
+              </View>
+              <View style={styles.lockedItemRow}>
+                <Ionicons name="lock-closed" size={14} color={colors.goldDark} />
+                <Text style={styles.lockedItemText}>Personalized 42-Day Consistency Routine</Text>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={styles.primaryBtn}
+            activeOpacity={0.85}
+            onPress={() => next('HARD_PAYWALL')}
+          >
+            <LinearGradient
+              colors={[colors.primary, colors.primaryLight]}
+              style={styles.primaryBtnGradient}
+            >
+              <Text style={styles.primaryBtnText}>Continue to My Snapshot</Text>
+              <Ionicons name="arrow-forward" size={18} color={colors.textInverse} />
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <Text style={styles.noRiskSubtext}>
+            Curated skincare intelligence. Zero advertisements.
+          </Text>
+        </ScrollView>
+      )}
+
+      {/* STEP 8: HARD PAYWALL */}
+      {activeStep === 'HARD_PAYWALL' && offering && (
+        <ScrollView
+          style={styles.container}
+          contentContainerStyle={styles.paywallContent}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.paywallHeader}>
+            <View style={styles.proPill}>
+              <Ionicons name="sparkles" size={12} color={colors.goldDark} />
+              <Text style={styles.proPillText}>MEMBERSHIP REQUIRED</Text>
+            </View>
+            <Text style={styles.paywallMainTitle}>{offering.headline}</Text>
+            <Text style={styles.paywallMainSubtitle}>{offering.supportingCopy}</Text>
+          </View>
+
+          {/* Macro Visual Proof Card */}
+          <View style={styles.macroProofCard}>
+            <View style={styles.macroHeaderRow}>
+              <Text style={styles.macroTitle}>Macro Skin Observation</Text>
+              <View style={styles.calibPill}>
+                <View style={styles.calibDot} />
+                <Text style={styles.calibText}>CALIBRATED 5200K</Text>
+              </View>
+            </View>
+
+            <View style={styles.macroGrid}>
+              <View style={styles.macroCol}>
+                <View style={styles.macroImgWrap}>
+                  <Image source={localImages.skinBefore} style={styles.macroImg} resizeMode="cover" />
+                </View>
+                <Text style={styles.macroLabel}>Day 1 Baseline</Text>
+              </View>
+              <View style={styles.macroArrow}>
+                <Ionicons name="arrow-forward" size={16} color={colors.goldDark} />
+              </View>
+              <View style={styles.macroCol}>
+                <View style={styles.macroImgWrap}>
+                  <Image source={localImages.skinAfter} style={styles.macroImg} resizeMode="cover" />
+                </View>
+                <Text style={[styles.macroLabel, { color: colors.goldDark, fontWeight: '700' }]}>
+                  Day 42 Calmer Tone
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 8 Core Benefits */}
+          <View style={styles.paywallBenefitsList}>
+            {offering.benefits.map((benefit, idx) => (
+              <View key={idx} style={styles.paywallBenefitItem}>
+                <View style={styles.paywallBenefitIcon}>
+                  <Ionicons name="checkmark-circle" size={18} color={colors.primary} />
+                </View>
+                <Text style={styles.paywallBenefitText}>{benefit}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Dynamic Plan Selector */}
+          <View style={styles.planSelectorBox}>
+            {offering.plans.map((plan: SubscriptionPlanOffering) => {
+              const isSelected = selectedPlanId === plan.id;
+              return (
+                <TouchableOpacity
+                  key={plan.id}
+                  style={[styles.planOptionCard, isSelected && styles.planOptionCardSelected]}
+                  activeOpacity={0.85}
+                  onPress={() => setSelectedPlanId(plan.id)}
+                >
+                  {plan.badgeLabel && (
+                    <View style={styles.planBadgeBanner}>
+                      <Text style={styles.planBadgeBannerText}>{plan.badgeLabel}</Text>
+                    </View>
+                  )}
+                  <View style={styles.planCardBody}>
+                    <View style={styles.planRadioCol}>
+                      <View style={[styles.radioCircle, isSelected && styles.radioCircleSelected]}>
+                        {isSelected && <View style={styles.radioDot} />}
+                      </View>
+                    </View>
+                    <View style={styles.planInfoCol}>
+                      <Text style={styles.planTitleText}>{plan.title}</Text>
+                      <Text style={styles.planPeriodText}>
+                        {plan.hasFreeTrial
+                          ? `Includes ${plan.trialDays}-day free trial`
+                          : plan.billingPeriod === 'annual'
+                          ? 'Billed annually'
+                          : 'Billed monthly, cancel anytime'}
+                      </Text>
+                    </View>
+                    <View style={styles.planPriceCol}>
+                      <Text style={styles.planPriceValue}>${plan.priceUsd}</Text>
+                      <Text style={styles.planEquivalent}>
+                        {plan.billingPeriod === 'annual' ? `$${plan.perMonthEquivalentUsd}/mo` : '/month'}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Primary Result-Driven CTA */}
+          <TouchableOpacity
+            style={[styles.primaryBtn, isPurchasing && styles.primaryBtnDisabled]}
+            disabled={isPurchasing}
+            activeOpacity={0.85}
+            onPress={handlePaywallPurchase}
+          >
+            <LinearGradient
+              colors={[colors.primary, colors.primaryLight]}
+              style={styles.primaryBtnGradient}
+            >
+              {isPurchasing ? (
+                <ActivityIndicator size="small" color={colors.textInverse} />
+              ) : (
+                <>
+                  <Text style={styles.primaryBtnText}>{offering.primaryCtaText}</Text>
+                  <Ionicons name="sparkles" size={18} color={colors.textInverse} />
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <Text style={styles.paywallTrialTerms}>
+            {selectedPlanId.includes('7dt')
+              ? 'Free for 7 days, then $39.99/year. Cancel anytime in App Store settings.'
+              : '$39.99/year or $6.99/month. Direct access to your Skin Snapshot.'}
+          </Text>
+
+          <View style={styles.securityExplanationCard}>
+            <Ionicons name="shield-checkmark" size={14} color={colors.goldDark} />
+            <Text style={styles.securityExplanationText}>
+              Every snapshot is computed with dermatological-grade optical precision. We do not sell your photos or display ads.
+            </Text>
+          </View>
+
+          {/* Legal Footer */}
+          <View style={styles.paywallLegalRow}>
+            <TouchableOpacity onPress={() => Alert.alert('Restore', 'Checking active subscriptions...')}>
+              <Text style={styles.legalLinkText}>Restore Purchases</Text>
+            </TouchableOpacity>
+            <Text style={styles.legalDot}>•</Text>
+            <TouchableOpacity onPress={() => Alert.alert('Terms', 'Terms of Service')}>
+              <Text style={styles.legalLinkText}>Terms</Text>
+            </TouchableOpacity>
+            <Text style={styles.legalDot}>•</Text>
+            <TouchableOpacity onPress={() => Alert.alert('Privacy', 'Privacy Policy')}>
+              <Text style={styles.legalLinkText}>Privacy</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      )}
+
+      {/* STEP 9: PROCESSING SCAN (POST-PURCHASE ENTITLED CLOUD EXECUTION) */}
+      {activeStep === 'PROCESSING_SCAN' && (
+        <View style={[styles.screen, styles.center, { paddingHorizontal: spacing.xl }]}>
+          <ActivityIndicator size="large" color={colors.primary} style={{ marginBottom: spacing.lg }} />
+          <Text style={styles.processingTitle}>Calculating Skin Snapshot</Text>
+          <Text style={styles.processingSubtitle}>
+            {cloudProcessStep === 1 && 'Verifying Pro entitlement server-side...'}
+            {cloudProcessStep === 2 && 'Mapping visible skin features with specialized optical engine...'}
+            {cloudProcessStep === 3 && 'Calibrating surface hydration & redness baseline...'}
+            {cloudProcessStep === 4 && 'Your snapshot is ready!'}
+          </Text>
+        </View>
+      )}
+
+      {/* STEP 10: WOW SNAPSHOT (REVEAL) */}
       {activeStep === 'WOW_SNAPSHOT' && (
         <ScrollView
           style={styles.container}
@@ -530,7 +905,6 @@ export default function OnboardingScreen() {
             </Text>
           </View>
 
-          {/* Qualitative Focus Areas (NOT 0-100 anxious score) */}
           <View style={styles.focusCardsList}>
             <View style={styles.focusCard}>
               <View style={styles.focusIconWrap}>
@@ -566,7 +940,6 @@ export default function OnboardingScreen() {
             </View>
           </View>
 
-          {/* Coach Baseline Message */}
           <View style={styles.coachSnapshotCallout}>
             <View style={styles.coachAvatarRow}>
               <Image source={localImages.coachPortrait} style={styles.coachSmallAvatar} />
@@ -580,7 +953,6 @@ export default function OnboardingScreen() {
             </Text>
           </View>
 
-          {/* Emotional Bridge to Personalization */}
           <View style={styles.bridgeSection}>
             <Text style={styles.bridgePrompt}>
               To formulate a routine compatible with your exact sensitivities, budget, and daily schedule:
@@ -603,7 +975,7 @@ export default function OnboardingScreen() {
         </ScrollView>
       )}
 
-      {/* STEP: SKIN FEEL */}
+      {/* STEP 11: SKIN FEEL */}
       {activeStep === 'SKIN_FEEL' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -637,7 +1009,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: SENSITIVITY */}
+      {/* STEP 12: SENSITIVITY */}
       {activeStep === 'SENSITIVITY' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -670,7 +1042,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: CURRENT ACTIVES */}
+      {/* STEP 13: CURRENT ACTIVES */}
       {activeStep === 'CURRENT_ACTIVES' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -724,7 +1096,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: KNOWN REACTIONS */}
+      {/* STEP 14: KNOWN REACTIONS */}
       {activeStep === 'KNOWN_REACTIONS' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -763,14 +1135,16 @@ export default function OnboardingScreen() {
             <TouchableOpacity
               style={styles.primaryBtn}
               activeOpacity={0.85}
-              onPress={() => next('EXISTING_ROUTINE', {
-                knownReactions: {
-                  hasKnownReactions: selectedAvoids.length > 0 && !selectedAvoids.includes('nothing_specific'),
-                  userReportedAllergies: [],
-                  userReportedSensitivities: selectedAvoids
-                },
-                productPreferencesToAvoid: selectedAvoids
-              })}
+              onPress={() =>
+                next('EXISTING_ROUTINE', {
+                  knownReactions: {
+                    hasKnownReactions: selectedAvoids.length > 0 && !selectedAvoids.includes('nothing_specific'),
+                    userReportedAllergies: [],
+                    userReportedSensitivities: selectedAvoids
+                  },
+                  productPreferencesToAvoid: selectedAvoids
+                })
+              }
             >
               <LinearGradient
                 colors={[colors.primary, colors.primaryLight]}
@@ -784,7 +1158,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: EXISTING ROUTINE */}
+      {/* STEP 15: EXISTING ROUTINE */}
       {activeStep === 'EXISTING_ROUTINE' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -816,7 +1190,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: SHELF CAPTURE PROMPT */}
+      {/* STEP 16: SHELF CAPTURE PROMPT */}
       {activeStep === 'SHELF_CAPTURE_PROMPT' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -853,7 +1227,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: DESIRED COMPLEXITY */}
+      {/* STEP 17: DESIRED COMPLEXITY */}
       {activeStep === 'DESIRED_COMPLEXITY' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -885,7 +1259,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: TIME COMMITMENT */}
+      {/* STEP 18: TIME COMMITMENT */}
       {activeStep === 'TIME_COMMITMENT' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -916,7 +1290,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: SUNSCREEN HABIT */}
+      {/* STEP 19: SUNSCREEN HABIT */}
       {activeStep === 'SUNSCREEN_HABIT' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -948,7 +1322,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: BUDGET PREFERENCE */}
+      {/* STEP 20: BUDGET PREFERENCE */}
       {activeStep === 'BUDGET_PREFERENCE' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -980,7 +1354,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: PRODUCT PREFERENCES */}
+      {/* STEP 21: PRODUCT PREFERENCES */}
       {activeStep === 'PRODUCT_PREFERENCES' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -1033,7 +1407,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: COUNTRY SELECT */}
+      {/* STEP 22: COUNTRY SELECT */}
       {activeStep === 'COUNTRY_SELECT' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -1067,7 +1441,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: PRIMARY MOTIVATION & COMMITMENT */}
+      {/* STEP 23: PRIMARY MOTIVATION & COMMITMENT */}
       {activeStep === 'PRIMARY_MOTIVATION' && (
         <View style={styles.stepContainer}>
           <View style={styles.questionHeader}>
@@ -1084,7 +1458,6 @@ export default function OnboardingScreen() {
               activeOpacity={0.85}
               onPress={() => {
                 next('PLAN_GENERATION', { primaryMotivation: 'all_of_the_above' });
-                handleStartPlanGen();
               }}
             >
               <View style={styles.commitmentIconRow}>
@@ -1099,7 +1472,7 @@ export default function OnboardingScreen() {
         </View>
       )}
 
-      {/* STEP: PLAN GENERATION & READY */}
+      {/* STEP 24: PLAN GENERATION & READY */}
       {activeStep === 'PLAN_GENERATION' && (
         <ScrollView
           style={styles.container}
@@ -1436,6 +1809,51 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginRight: spacing.sm
   },
+  // Explainer Step
+  explainerContent: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xxl
+  },
+  explainerCardList: {
+    marginBottom: spacing.xl
+  },
+  explainerItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.surface,
+    padding: spacing.base,
+    borderRadius: radii.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    ...shadows.subtle
+  },
+  explainerIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.surfaceSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.md,
+    marginTop: 2
+  },
+  explainerTextWrap: {
+    flex: 1
+  },
+  explainerItemTitle: {
+    ...typography.bodyBold,
+    fontSize: 15,
+    color: colors.textPrimary,
+    marginBottom: 2
+  },
+  explainerItemDesc: {
+    ...typography.caption,
+    fontSize: 13,
+    lineHeight: 18,
+    color: colors.textSecondary
+  },
   // Underage notice
   noticeModalCard: {
     backgroundColor: colors.surface,
@@ -1681,6 +2099,364 @@ const styles = StyleSheet.create({
   scanProgressPercent: {
     ...typography.title3,
     color: colors.gold
+  },
+  // PRE_PAYWALL_READY Styles
+  prePaywallContent: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl
+  },
+  readyHeroTitle: {
+    ...typography.display,
+    fontSize: 28,
+    lineHeight: 34,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs
+  },
+  readyHeroSubtitle: {
+    ...typography.body,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary,
+    marginBottom: spacing.lg
+  },
+  lockedPreviewCard: {
+    backgroundColor: colors.surface,
+    padding: spacing.base,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    marginBottom: spacing.xl,
+    ...shadows.card
+  },
+  previewThumbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.base,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight
+  },
+  previewThumb: {
+    width: 64,
+    height: 64,
+    borderRadius: radii.md,
+    marginRight: spacing.md
+  },
+  previewThumbInfo: {
+    flex: 1
+  },
+  previewThumbTitle: {
+    ...typography.bodyBold,
+    fontSize: 15,
+    color: colors.textPrimary
+  },
+  previewThumbMeta: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textSecondary,
+    marginTop: 2,
+    marginBottom: 6
+  },
+  statusPill: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full
+  },
+  statusPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: 0.6
+  },
+  lockedItemsList: {
+    marginTop: spacing.xs
+  },
+  lockedItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight
+  },
+  lockedItemText: {
+    ...typography.caption,
+    fontSize: 13,
+    color: colors.textPrimary,
+    marginLeft: spacing.sm,
+    fontWeight: '600'
+  },
+  noRiskSubtext: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginTop: spacing.md
+  },
+  // HARD PAYWALL STYLES
+  paywallContent: {
+    paddingHorizontal: spacing.base,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxl
+  },
+  paywallHeader: {
+    marginBottom: spacing.base
+  },
+  proPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: colors.goldLight,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: radii.full,
+    marginBottom: spacing.xs
+  },
+  proPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.goldDark,
+    marginLeft: 4,
+    letterSpacing: 1
+  },
+  paywallMainTitle: {
+    ...typography.display,
+    fontSize: 26,
+    lineHeight: 32,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs
+  },
+  paywallMainSubtitle: {
+    ...typography.body,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.textSecondary
+  },
+  macroProofCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.base,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+    ...shadows.card
+  },
+  macroHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.md
+  },
+  macroTitle: {
+    ...typography.title3,
+    fontSize: 14,
+    fontWeight: '700'
+  },
+  calibPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primarySoft,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full
+  },
+  calibDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.primary,
+    marginRight: 5
+  },
+  calibText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    color: colors.primary
+  },
+  macroGrid: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  macroCol: {
+    flex: 1,
+    alignItems: 'center'
+  },
+  macroImgWrap: {
+    width: '100%',
+    aspectRatio: 1,
+    borderRadius: radii.md,
+    overflow: 'hidden'
+  },
+  macroImg: {
+    width: '100%',
+    height: '100%'
+  },
+  macroLabel: {
+    ...typography.caption,
+    fontSize: 11,
+    marginTop: 6,
+    color: colors.textSecondary,
+    textAlign: 'center'
+  },
+  macroArrow: {
+    width: 32,
+    alignItems: 'center'
+  },
+  paywallBenefitsList: {
+    marginBottom: spacing.lg
+  },
+  paywallBenefitItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm + 2
+  },
+  paywallBenefitIcon: {
+    marginRight: spacing.sm
+  },
+  paywallBenefitText: {
+    ...typography.bodyBold,
+    fontSize: 13,
+    color: colors.textPrimary,
+    flex: 1
+  },
+  planSelectorBox: {
+    marginBottom: spacing.base
+  },
+  planOptionCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 2,
+    borderColor: colors.border,
+    marginBottom: spacing.md,
+    overflow: 'hidden',
+    ...shadows.subtle
+  },
+  planOptionCardSelected: {
+    borderColor: colors.primary
+  },
+  planBadgeBanner: {
+    backgroundColor: colors.primary,
+    paddingVertical: 3,
+    alignItems: 'center'
+  },
+  planBadgeBannerText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: colors.textInverse,
+    letterSpacing: 1
+  },
+  planCardBody: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.base
+  },
+  planRadioCol: {
+    marginRight: spacing.md
+  },
+  radioCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.textTertiary,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  radioCircleSelected: {
+    borderColor: colors.primary
+  },
+  radioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: colors.primary
+  },
+  planInfoCol: {
+    flex: 1
+  },
+  planTitleText: {
+    ...typography.bodyBold,
+    fontSize: 15,
+    color: colors.textPrimary
+  },
+  planPeriodText: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.goldDark,
+    fontWeight: '600',
+    marginTop: 2
+  },
+  planPriceCol: {
+    alignItems: 'flex-end'
+  },
+  planPriceValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: colors.textPrimary
+  },
+  planEquivalent: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textSecondary
+  },
+  paywallTrialTerms: {
+    ...typography.caption,
+    fontSize: 12,
+    color: colors.textTertiary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    lineHeight: 16
+  },
+  securityExplanationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surfaceSubtle,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    marginTop: spacing.base,
+    borderWidth: 1,
+    borderColor: colors.borderLight
+  },
+  securityExplanationText: {
+    ...typography.caption,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.textSecondary,
+    marginLeft: spacing.sm,
+    flex: 1
+  },
+  paywallLegalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xl,
+    paddingTop: spacing.base,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight
+  },
+  legalLinkText: {
+    ...typography.caption,
+    fontSize: 11,
+    color: colors.textTertiary
+  },
+  legalDot: {
+    marginHorizontal: 8,
+    color: colors.border
+  },
+  // Processing Scan Styles
+  processingTitle: {
+    ...typography.title2,
+    fontSize: 22,
+    marginBottom: spacing.xs
+  },
+  processingSubtitle: {
+    ...typography.body,
+    fontSize: 14,
+    color: colors.textSecondary,
+    textAlign: 'center'
   },
   // WOW Screen Styles
   wowContent: {

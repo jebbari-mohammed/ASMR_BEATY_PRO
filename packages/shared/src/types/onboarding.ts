@@ -9,8 +9,12 @@ export type OnboardingStep =
   | 'WELCOME'
   | 'AGE_GATE'
   | 'GOALS'
+  | 'SNAPSHOT_EXPLAINER'
   | 'PHOTO_PRIVACY'
   | 'GUIDED_SCAN'
+  | 'PRE_PAYWALL_READY'
+  | 'HARD_PAYWALL'
+  | 'PROCESSING_SCAN'
   | 'WOW_SNAPSHOT'
   | 'SKIN_FEEL'
   | 'SENSITIVITY'
@@ -147,6 +151,8 @@ export interface OnboardingStateV1 {
   productPreferencesToAvoid: ProductAvoidanceOption[];
   countryCode?: string;
   primaryMotivation?: PrimaryMotivationOption;
+  hasSubscribedAtPaywall?: boolean;
+  subscribedPlanId?: string;
   completedAt?: string;
 }
 
@@ -174,5 +180,7 @@ export const OnboardingStateV1Schema = z.object({
   productPreferencesToAvoid: z.array(z.string()),
   countryCode: z.string().optional(),
   primaryMotivation: z.string().optional(),
+  hasSubscribedAtPaywall: z.boolean().optional(),
+  subscribedPlanId: z.string().optional(),
   completedAt: z.string().optional()
 });
