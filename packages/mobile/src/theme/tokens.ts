@@ -110,6 +110,13 @@ export const typography = {
     letterSpacing: -0.2,
     color: colors.textPrimary
   },
+  title3: {
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '600' as const,
+    letterSpacing: -0.1,
+    color: colors.textPrimary
+  },
   h1: {
     fontSize: 26,
     lineHeight: 32,
@@ -196,6 +203,13 @@ export const shadows = {
     shadowOpacity: 0.08,
     shadowRadius: 14,
     elevation: 3
+  },
+  primary: {
+    shadowColor: '#1A382B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 16,
+    elevation: 4
   },
   card: {
     shadowColor: '#1A382B',

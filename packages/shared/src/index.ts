@@ -7,6 +7,7 @@ export * from './types/coach.js';
 export * from './types/entitlement.js';
 export * from './types/safety.js';
 export * from './types/spot-journal.js';
+export * from './types/onboarding.js';
 
 // Validation Schemas
 export * from './schemas/skin-analysis.schema.js';

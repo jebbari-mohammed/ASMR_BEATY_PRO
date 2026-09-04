@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
@@ -16,6 +17,7 @@ interface Milestone {
 }
 
 export default function ProgressScreen() {
+  const router = useRouter();
   const [selectedMilestone, setSelectedMilestone] = useState<number>(14);
 
   const milestones: Milestone[] = [
@@ -48,11 +50,18 @@ export default function ProgressScreen() {
           {milestones.map((m) => {
             const isSelected = selectedMilestone === m.day;
             const isCurrent = m.status === 'active';
+            const isUpcoming = m.status === 'upcoming';
             return (
               <TouchableOpacity
                 key={m.day}
                 activeOpacity={0.8}
-                onPress={() => setSelectedMilestone(m.day)}
+                onPress={() => {
+                  if (isUpcoming) {
+                    router.push('/modal/paywall');
+                  } else {
+                    setSelectedMilestone(m.day);
+                  }
+                }}
                 style={[
                   styles.milestoneNode,
                   isSelected && styles.milestoneNodeSelected,
@@ -61,9 +70,9 @@ export default function ProgressScreen() {
               >
                 <View style={[styles.nodeIconWrap, isCurrent && styles.nodeIconWrapCurrent]}>
                   <Ionicons
-                    name={m.status === 'completed' ? 'checkmark-circle' : isCurrent ? 'sparkles' : 'lock-closed-outline'}
+                    name={m.status === 'completed' ? 'checkmark-circle' : isCurrent ? 'sparkles' : 'lock-closed'}
                     size={16}
-                    color={isCurrent ? colors.textInverse : m.status === 'completed' ? colors.primary : colors.textTertiary}
+                    color={isCurrent ? colors.textInverse : m.status === 'completed' ? colors.primary : colors.goldDark}
                   />
                 </View>
                 <Text style={[styles.nodeLabel, isSelected && styles.nodeLabelSelected]}>{m.label}</Text>
@@ -185,6 +194,36 @@ export default function ProgressScreen() {
             </View>
           </LinearGradient>
         </Card>
+
+        {/* 42-Day Pro Program Unlock Banner */}
+        <TouchableOpacity
+          style={styles.proUnlockCard}
+          activeOpacity={0.85}
+          onPress={() => router.push('/modal/paywall')}
+        >
+          <LinearGradient
+            colors={[colors.primary, colors.primaryLight]}
+            style={styles.proUnlockGradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+          >
+            <View style={styles.proUnlockTop}>
+              <View style={styles.proTagPill}>
+                <Ionicons name="sparkles" size={12} color={colors.gold} />
+                <Text style={styles.proTagPillText}>FULL PROGRAM ACCESS</Text>
+              </View>
+              <Text style={styles.proUnlockPrice}>$3.33/mo</Text>
+            </View>
+            <Text style={styles.proUnlockTitle}>Unlock Day 30 & Day 42 Milestones</Text>
+            <Text style={styles.proUnlockSub}>
+              Get weekly guided snapshots, routine compatibility checks, and long-term skin memory tracking.
+            </Text>
+            <View style={styles.proUnlockActionRow}>
+              <Text style={styles.proUnlockActionText}>View 42-Day Consistency Plan</Text>
+              <Ionicons name="arrow-forward" size={16} color={colors.textInverse} />
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
 
         {/* Non-Causality Scientific Disclaimer */}
         <DisclaimerBar />
@@ -474,5 +513,64 @@ const styles = StyleSheet.create({
   boldSpan: {
     fontWeight: '700',
     color: colors.primary
+  },
+  proUnlockCard: {
+    borderRadius: radii.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.lg,
+    ...shadows.card
+  },
+  proUnlockGradient: {
+    padding: spacing.base
+  },
+  proUnlockTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs
+  },
+  proTagPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.full
+  },
+  proTagPillText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.gold,
+    marginLeft: 4,
+    letterSpacing: 0.8
+  },
+  proUnlockPrice: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textInverseMuted
+  },
+  proUnlockTitle: {
+    ...typography.title3,
+    fontSize: 16,
+    color: colors.textInverse,
+    marginTop: 4,
+    marginBottom: 2
+  },
+  proUnlockSub: {
+    ...typography.caption,
+    fontSize: 12,
+    lineHeight: 16,
+    color: colors.textInverseMuted,
+    marginBottom: spacing.sm
+  },
+  proUnlockActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  proUnlockActionText: {
+    ...typography.captionBold,
+    fontSize: 12,
+    color: colors.textInverse,
+    marginRight: 4
   }
 });

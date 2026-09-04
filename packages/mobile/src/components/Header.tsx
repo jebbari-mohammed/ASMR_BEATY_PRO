@@ -27,9 +27,14 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, showBack = fals
           <View>
             <View style={styles.logoRow}>
               <Text style={styles.brandTitle}>ASMR BEAUTY</Text>
-              <View style={styles.proBadge}>
+              <TouchableOpacity
+                style={styles.proBadge}
+                activeOpacity={0.8}
+                onPress={() => router.push('/modal/paywall')}
+                accessibilityLabel="Open Pro Access Paywall"
+              >
                 <Text style={styles.proText}>PRO</Text>
-              </View>
+              </TouchableOpacity>
             </View>
             <Text style={styles.tagline}>INTELLIGENT SKIN COACH</Text>
           </View>

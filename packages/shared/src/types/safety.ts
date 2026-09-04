@@ -38,6 +38,11 @@ export interface SafetyEvaluationInput {
     inciIngredients: string[];
   }[];
   recentIrritationReported: boolean;
+  sensitivityLevel?: 'almost_never' | 'occasionally' | 'sometimes' | 'often' | 'very_easily' | 'unsure';
+  userReportedAllergy?: string[];
+  userReportedSensitivity?: string[];
+  budgetPreference?: string;
+  productPreferencesToAvoid?: string[];
   userReportedSymptoms?: string[]; // check for emergency/medical escalations
   candidateProduct: {
     productId: string;
