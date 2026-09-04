@@ -14,7 +14,8 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.asmrbeauty.skincoach",
+      "bundleIdentifier": "com.asmr.beautypro",
+      "googleServicesFile": "./GoogleService-Info.plist",
       "infoPlist": {
         "NSCameraUsageDescription": "ASMR Beauty Pro uses your camera to capture standardized photos for cosmetic skin analysis and routine personalization. Photos are processed with ephemeral privacy controls.",
         "NSPhotoLibraryUsageDescription": "Allows you to select product labels or progress photos."
@@ -28,7 +29,8 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FBF9F5"
       },
-      "package": "com.asmrbeauty.skincoach",
+      "package": "com.asmr.beautypro",
+      "googleServicesFile": "./google-services.json",
       "permissions": [
         "CAMERA"
       ],

@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "asmr-skin-coach",
+    "production": "asmr-skin-coach"
+  }
+}

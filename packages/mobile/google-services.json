@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "756603780588",
+    "project_id": "asmr-skin-coach",
+    "storage_bucket": "asmr-skin-coach.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:756603780588:android:158f2e069393763a4894c9",
+        "android_client_info": {
+          "package_name": "com.asmr.beautypro"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVoU2YXoGzVN6zWLFkPNUC3ci4vALofjc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

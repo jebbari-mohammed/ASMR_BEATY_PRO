@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { colors } from '../src/theme/tokens';
+import { SubscriptionService } from '../src/services/subscription-service';
 
 export default function RootLayout() {
+  useEffect(() => {
+    SubscriptionService.initialize();
+  }, []);
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" backgroundColor={colors.background} />
