@@ -10,9 +10,11 @@
     {
       "source": "packages/backend",
       "codebase": "default",
+      "runtime": "nodejs22",
       "ignore": [
         "node_modules",
         ".git",
+        "package-lock.json",
         "firebase-debug.log",
         "firebase-debug.*.log"
       ],

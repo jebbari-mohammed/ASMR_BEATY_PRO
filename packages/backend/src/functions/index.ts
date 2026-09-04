@@ -144,9 +144,7 @@ export const chatWithSkinCoach = onCall(
 
     const { userMessage, currentRoutineSummary, latestSkinSnapshotSummary, memorySummary, allowedCandidateProductIds, allowedCandidateDescriptions } = request.data;
 
-    const gemini = new GeminiProvider({
-      apiKey: process.env.GEMINI_API_KEY || ''
-    });
+    const gemini = new GeminiProvider();
 
     const context: CoachReasoningContext = {
       userId: request.auth.uid,

@@ -4,6 +4,9 @@
   "description": "Shared domain models, Zod schemas, and deterministic safety engine for AI Skin Coach",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "jest",

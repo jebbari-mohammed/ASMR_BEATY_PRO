@@ -1,19 +1,28 @@
+import { GoogleAuth } from 'google-auth-library';
 import { StructuredCoachResponse, StructuredCoachResponseSchema } from '@asmr/shared';
 import { AIReasoningProvider, CoachReasoningContext } from './base.provider.js';
 
 export interface GeminiConfig {
-  apiKey: string;
-  defaultModel?: string; // default: 'gemini-1.5-flash'
+  apiKey?: string;
+  projectId?: string;
+  location?: string;
+  defaultModel?: string; // default: 'gemini-2.5-flash'
 }
 
 export class GeminiProvider implements AIReasoningProvider {
   readonly providerName = 'google_gemini';
   readonly defaultModel: string;
-  private apiKey: string;
+  private apiKey?: string;
+  private projectId: string;
+  private location: string;
+  private auth: GoogleAuth;
 
-  constructor(config: GeminiConfig) {
+  constructor(config: GeminiConfig = {}) {
     this.apiKey = config.apiKey;
-    this.defaultModel = config.defaultModel || 'gemini-1.5-flash';
+    this.projectId = config.projectId || process.env.GCLOUD_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || 'asmr-skin-coach';
+    this.location = config.location || 'us-central1';
+    this.defaultModel = config.defaultModel || 'gemini-2.5-flash';
+    this.auth = new GoogleAuth({ scopes: 'https://www.googleapis.com/auth/cloud-platform' });
   }
 
   async generateCoachResponse(context: CoachReasoningContext): Promise<StructuredCoachResponse> {
@@ -37,7 +46,6 @@ USER CONTEXT:
 - Allowed Products: ${JSON.stringify(context.allowedCandidateDescriptions)}`;
 
     const userPrompt = `<user_untrusted_input>\n${context.userMessage}\n</user_untrusted_input>`;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.defaultModel}:generateContent?key=${this.apiKey}`;
 
     const body = {
       systemInstruction: {
@@ -51,21 +59,52 @@ USER CONTEXT:
       ],
       generationConfig: {
         temperature: 0.2,
-        responseMimeType: 'application/json'
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'OBJECT',
+          properties: {
+            intent: { type: 'STRING' },
+            summary: { type: 'STRING' },
+            candidateProductIds: {
+              type: 'ARRAY',
+              items: { type: 'STRING' }
+            },
+            reasonCodes: {
+              type: 'ARRAY',
+              items: { type: 'STRING' }
+            },
+            riskFlags: {
+              type: 'ARRAY',
+              items: { type: 'STRING' }
+            },
+            requiresHumanCareSuggestion: { type: 'BOOLEAN' },
+            messageToUser: { type: 'STRING' }
+          },
+          required: ['intent', 'summary', 'reasonCodes', 'riskFlags', 'requiresHumanCareSuggestion', 'messageToUser']
+        }
       }
     };
 
     let rawResponse: any;
 
     try {
+      let url: string;
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+      // Default to native Vertex AI in Google Cloud (zero API key dependency, Enterprise IAM)
+      const client = await this.auth.getClient();
+      const accessToken = await client.getAccessToken();
+      url = `https://${this.location}-aiplatform.googleapis.com/v1/projects/${this.projectId}/locations/${this.location}/publishers/google/models/${this.defaultModel}:generateContent`;
+      headers['Authorization'] = `Bearer ${accessToken.token}`;
+
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(body)
       });
 
       if (!res.ok) {
-        throw new Error(`Gemini API returned status ${res.status}: ${await res.text()}`);
+        throw new Error(`Vertex AI returned status ${res.status}: ${await res.text()}`);
       }
 
       const json: any = await res.json();
@@ -75,6 +114,7 @@ USER CONTEXT:
       }
       rawResponse = JSON.parse(textPayload);
     } catch (err: any) {
+      console.error('[GeminiProvider Error]:', err.message || err);
       // Fallback graceful degradation (Section 47)
       return {
         intent: 'fallback_error',
