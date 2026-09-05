@@ -13,8 +13,8 @@ const EXPERIMENT_VARIANT_KEY = 'asmr_remote_config_paywall_variant_v1';
 
 // Production RevenueCat API Keys (set via environment variables)
 export const REVENUECAT_CONFIG = {
-  appleApiKey: process.env.EXPO_PUBLIC_RC_APPLE_API_KEY || 'appl_placeholder_asmr',
-  googleApiKey: process.env.EXPO_PUBLIC_RC_GOOGLE_API_KEY || 'goog_placeholder_asmr',
+  appleApiKey: process.env.EXPO_PUBLIC_RC_APPLE_API_KEY || process.env.EXPO_PUBLIC_REVENUECAT_APPLE_KEY || 'appl_placeholder_asmr',
+  googleApiKey: process.env.EXPO_PUBLIC_RC_GOOGLE_API_KEY || process.env.EXPO_PUBLIC_REVENUECAT_GOOGLE_KEY || 'goog_placeholder_asmr',
   entitlementId: 'pro_access'
 };
 
@@ -138,7 +138,11 @@ export class SubscriptionService {
     try {
       const offerings = await Purchases.getOfferings();
       const currentPackage = offerings.current?.availablePackages.find(
-        (pkg) => pkg.identifier === planId || pkg.product.identifier === planId
+        (pkg) =>
+          pkg.identifier === planId ||
+          pkg.product.identifier === planId ||
+          (planId.includes('annual') && (pkg.packageType === 'ANNUAL' || pkg.identifier === '$rc_annual' || pkg.product.identifier === 'skincoach_3999_1y')) ||
+          (planId.includes('monthly') && (pkg.packageType === 'MONTHLY' || pkg.identifier === '$rc_monthly' || pkg.product.identifier === 'skincoach_699_1m'))
       );
       if (!currentPackage) {
         throw new Error(`Subscription product "${planId}" not found in current store offerings.`);
