@@ -104,7 +104,10 @@ export class SubscriptionService {
     if (apiKey && !apiKey.includes('placeholder')) {
       try {
         const customerInfo = await Purchases.getCustomerInfo();
-        const isPro = customerInfo.entitlements.active[REVENUECAT_CONFIG.entitlementId] !== undefined;
+        const isPro =
+          customerInfo.entitlements.active[REVENUECAT_CONFIG.entitlementId] !== undefined ||
+          customerInfo.entitlements.active['asmr_beaty_pro_pro'] !== undefined ||
+          customerInfo.entitlements.active['pro_access'] !== undefined;
         if (isPro) return true;
       } catch (rcErr) {
         console.warn('[RevenueCat] CustomerInfo check warning:', rcErr);
@@ -149,10 +152,13 @@ export class SubscriptionService {
       }
 
       const { customerInfo } = await Purchases.purchasePackage(currentPackage);
-      const isPro = customerInfo.entitlements.active[REVENUECAT_CONFIG.entitlementId] !== undefined;
+      const isPro =
+        customerInfo.entitlements.active[REVENUECAT_CONFIG.entitlementId] !== undefined ||
+        customerInfo.entitlements.active['asmr_beaty_pro_pro'] !== undefined ||
+        customerInfo.entitlements.active['pro_access'] !== undefined;
 
       if (!isPro) {
-        throw new Error('Purchase completed but entitlement "pro_access" is not active. Please restore purchases.');
+        throw new Error('Purchase completed but entitlement is not active. Please restore purchases.');
       }
 
       const entitlementRecord = {

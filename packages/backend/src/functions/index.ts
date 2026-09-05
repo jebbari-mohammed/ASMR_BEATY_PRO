@@ -14,6 +14,7 @@ if (admin.apps.length === 0) {
 }
 
 const db = admin.firestore();
+db.settings({ ignoreUndefinedProperties: true });
 const storage = admin.storage();
 const store = new FirestoreScanStore(db, storage);
 const affiliateService = new AffiliateResolverService(db);
@@ -41,10 +42,15 @@ export const onRevenueCatWebhook = onRequest(
       return;
     }
 
-    const userId = event.app_user_id;
-    const eventType = event.type; // e.g. INITIAL_PURCHASE, RENEWAL, CANCELLATION, EXPIRATION
+    const eventType = event.type; // e.g. TEST, INITIAL_PURCHASE, RENEWAL, CANCELLATION, EXPIRATION
+    if (eventType === 'TEST') {
+      res.status(200).json({ received: true, test: true });
+      return;
+    }
+
+    const userId = event.app_user_id || 'unknown';
     const entitlementIds = event.entitlement_ids || [];
-    const isPro = entitlementIds.includes('pro_access');
+    const isPro = entitlementIds.includes('pro_access') || entitlementIds.includes('asmr_beaty_pro_pro');
 
     const statusMap: Record<string, string> = {
       INITIAL_PURCHASE: 'active',
@@ -67,8 +73,8 @@ export const onRevenueCatWebhook = onRequest(
           isPro: status === 'active' || status === 'canceled', // Canceled retains access until period ends
           status,
           tier: event.product_id?.includes('annual') ? 'PRO_ANNUAL' : 'PRO_MONTHLY',
-          productId: event.product_id,
-          expiresAtMs: event.expiration_at_ms,
+          productId: event.product_id || null,
+          expiresAtMs: event.expiration_at_ms || null,
           updatedAt: admin.firestore.FieldValue.serverTimestamp()
         },
         { merge: true }
