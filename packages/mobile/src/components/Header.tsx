@@ -50,7 +50,12 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, showBack = fals
             <View style={styles.badgeDot} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.avatarRing} activeOpacity={0.8}>
+          <TouchableOpacity
+            style={styles.avatarRing}
+            activeOpacity={0.8}
+            onPress={() => router.push('/modal/settings')}
+            accessibilityLabel="Open Settings and Privacy"
+          >
             <View style={styles.avatarInner}>
               <Text style={styles.avatarText}>S</Text>
             </View>

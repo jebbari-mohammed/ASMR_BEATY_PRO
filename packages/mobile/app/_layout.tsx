@@ -38,6 +38,13 @@ export default function RootLayout() {
             }
           }}
         />
+        <Stack.Screen
+          name="modal/settings"
+          options={{
+            presentation: 'modal',
+            headerShown: false
+          }}
+        />
       </Stack>
     </SafeAreaProvider>
   );

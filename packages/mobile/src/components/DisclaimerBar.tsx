@@ -19,7 +19,7 @@ export const DisclaimerBar: React.FC<DisclaimerBarProps> = ({ showAffiliate = tr
       </Text>
       {showAffiliate && (
         <Text style={[styles.text, styles.affiliateText]}>
-          Independent recommendations. Retailer commissions never influence compatibility scoring.
+          We may earn a commission if you purchase through our links. Commission does not affect compatibility ranking.
         </Text>
       )}
     </View>

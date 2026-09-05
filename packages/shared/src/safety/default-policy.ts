@@ -1,8 +1,8 @@
 import { SafetyPolicy } from '../types/safety.js';
 
 export const DEFAULT_SAFETY_POLICY_V1: SafetyPolicy = {
-  policyVersion: '1.0.0-cosmetic-safety-2026',
-  reviewedBy: 'Board Skincare Safety Protocol Review',
+  policyVersion: '1.0.0-conservative-policy-2026',
+  reviewedBy: 'Internal Cosmetic Policy Team (Conservative V1)',
   effectiveDate: '2026-09-01',
   maxNewActivesIntroducedPerMonth: 1,
   
@@ -10,31 +10,31 @@ export const DEFAULT_SAFETY_POLICY_V1: SafetyPolicy = {
     {
       activeA: 'retinoid',
       activeB: 'aha',
-      reason: 'Combining retinoids with alpha hydroxy acids significantly elevates barrier irritation risk.',
+      reason: 'Conservative product policy: avoid simultaneous retinoid and alpha hydroxy acid layering in V1 routines to prioritize barrier comfort.',
       severity: 'forbidden_same_routine'
     },
     {
       activeA: 'retinoid',
       activeB: 'bha',
-      reason: 'Combining retinoids with salicylic acid simultaneously causes excessive stratum corneum desquamation.',
+      reason: 'Conservative product policy: avoid simultaneous retinoid and beta hydroxy acid layering in V1 routines.',
       severity: 'forbidden_same_routine'
     },
     {
       activeA: 'retinoid',
       activeB: 'benzoyl_peroxide',
-      reason: 'Benzoyl peroxide can oxidize certain retinoids and increases acute erythema risk when layered.',
+      reason: 'Conservative product policy: avoid simultaneous retinoid and benzoyl peroxide in the same routine step.',
       severity: 'alternate_nights_only'
     },
     {
       activeA: 'vitamin_c_l_ascorbic',
       activeB: 'aha',
-      reason: 'Layering low-pH L-ascorbic acid directly with AHAs causes stinging and compromised moisture barrier.',
+      reason: 'Conservative product policy: avoid simultaneous direct L-ascorbic acid and AHA layering in the same routine step.',
       severity: 'forbidden_same_routine'
     },
     {
       activeA: 'vitamin_c_l_ascorbic',
       activeB: 'bha',
-      reason: 'Simultaneous low-pH direct acids risk irritation and redness flare-up.',
+      reason: 'Conservative product policy: avoid simultaneous direct L-ascorbic acid and BHA layering in the same routine step.',
       severity: 'forbidden_same_routine'
     }
   ],

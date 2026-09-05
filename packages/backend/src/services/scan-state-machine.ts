@@ -1,4 +1,11 @@
-import { ScanSession, NormalizedSkinAnalysis, ScanStatus } from '@asmr/shared';
+import {
+  ScanSession,
+  NormalizedSkinAnalysis,
+  ScanStatus,
+  SkinAnalysisInput,
+  SkinAnalysisInputImage,
+  StandardizedCropType
+} from '@asmr/shared';
 import { SkinAnalysisProvider } from '../providers/skin/base.provider.js';
 
 export interface ServerVerificationContext {
@@ -93,12 +100,12 @@ export class ScanStateMachine {
       status: 'CREATED',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      angles: ['front'],
+      angles: ['front', 'left_profile', 'right_profile'],
       idempotencyKey,
       storagePaths: {
         front: `transient-scans/${userId}/${scanId}/front.jpg`,
-        left_profile: '',
-        right_profile: ''
+        left_profile: `transient-scans/${userId}/${scanId}/left.jpg`,
+        right_profile: `transient-scans/${userId}/${scanId}/right.jpg`
       },
       retryCount: 0
     };
@@ -109,11 +116,11 @@ export class ScanStateMachine {
 
   /**
    * Step 2: Executes the full analysis pipeline idempotently.
-   * Gated: No paid third-party provider API is called unless entitlement is verified server-side.
+   * Gated: No paid cloud provider API is called unless entitlement is verified server-side.
    */
   async processScan(
     scanId: string,
-    imageBuffer: Buffer,
+    imageInput: Buffer | SkinAnalysisInputImage[],
     context?: ServerVerificationContext
   ): Promise<NormalizedSkinAnalysis> {
     const session = await this.store.getSession(scanId);
@@ -141,7 +148,7 @@ export class ScanStateMachine {
       throw new Error('SUBSCRIPTION_REQUIRED');
     }
 
-    // IDEMPOTENCY CHECK: Do NOT re-call vendor if already analyzed
+    // IDEMPOTENCY CHECK: Do NOT re-call provider if already analyzed
     if (session.status === 'COMPLETED' && session.resultSnapshotId) {
       return await this.fetchExistingSnapshot(session.userId, session.resultSnapshotId);
     }
@@ -152,14 +159,39 @@ export class ScanStateMachine {
     let normalized: NormalizedSkinAnalysis;
 
     try {
-      // Deduct quota atomically on actual analysis attempt
-      await this.store.decrementQuota(session.userId);
+      // Normalize images into structured format
+      let images: SkinAnalysisInputImage[];
+      if (Buffer.isBuffer(imageInput)) {
+        images = [
+          {
+            type: 'FULL_FRONT' as StandardizedCropType,
+            buffer: imageInput,
+            mimeType: 'image/jpeg'
+          }
+        ];
+      } else {
+        images = imageInput;
+      }
 
-      // Call Skin Provider (paid cloud API call)
-      normalized = await this.provider.analyzeSkin(session, imageBuffer);
+      const input: SkinAnalysisInput = {
+        scanId: session.scanId,
+        userId: session.userId,
+        images
+      };
+
+      // Call Skin Provider (Gemini 3.8 Flash)
+      if (typeof this.provider.analyze === 'function') {
+        normalized = await this.provider.analyze(input);
+      } else {
+        const primaryBuffer = images[0]?.buffer || Buffer.alloc(0);
+        normalized = await this.provider.analyzeSkin(session, primaryBuffer);
+      }
 
       // Transition state: NORMALIZING -> COMPLETED
       await this.updateStatus(session, 'NORMALIZING');
+
+      // Deduct quota atomically ONLY upon verified successful analysis (Fairness rule)
+      await this.store.decrementQuota(session.userId);
 
       // Persist snapshot to Firestore
       await this.store.saveSnapshot(session.userId, normalized);
@@ -168,10 +200,12 @@ export class ScanStateMachine {
       await this.updateStatus(session, 'COMPLETED');
 
       // PHOTO DATA MINIMIZATION: Clean up raw transient photo immediately
-      if (session.storagePaths.front) {
-        await this.store.deleteTransientPhoto(session.storagePaths.front).catch(err => {
-          console.warn(`Transient photo cleanup deferred: ${err.message}`);
-        });
+      for (const path of Object.values(session.storagePaths)) {
+        if (path) {
+          await this.store.deleteTransientPhoto(path).catch((err) => {
+            console.warn(`Transient photo cleanup deferred for ${path}: ${err.message}`);
+          });
+        }
       }
 
       return normalized;

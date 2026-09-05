@@ -12,6 +12,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#FBF9F5"
     },
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.asmr.beautypro",
@@ -32,7 +36,9 @@
       "package": "com.asmr.beautypro",
       "googleServicesFile": "./google-services.json",
       "permissions": [
-        "CAMERA"
+        "CAMERA",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "intentFilters": [
         {
@@ -67,6 +73,15 @@
       "expo-camera",
       "expo-secure-store"
     ],
-    "scheme": "asmrskin"
+    "scheme": "asmrskin",
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "ae81278a-7308-431e-a896-6c57e9cc212b"
+      }
+    },
+    "owner": "mojebbari1"
   }
 }

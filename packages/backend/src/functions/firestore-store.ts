@@ -62,12 +62,24 @@ export class FirestoreScanStore implements ScanStore {
   async getQuota(userId: string): Promise<UserScanQuota> {
     const doc = await this.db.collection('users').doc(userId).collection('usage').doc('scans').get();
     if (!doc.exists) {
-      return { remainingScans: 4, cooldownHoursRemaining: 0 };
+      return { remainingScans: 1, cooldownHoursRemaining: 0 };
     }
     const data = doc.data() || {};
+    let cooldownHoursRemaining = 0;
+
+    if (data.lastScanAt) {
+      const lastScanMs = data.lastScanAt.toMillis
+        ? data.lastScanAt.toMillis()
+        : new Date(data.lastScanAt).getTime();
+      const cooldownDays = Number(process.env.WEEKLY_SCAN_COOLDOWN_DAYS || 7);
+      const cooldownHours = cooldownDays * 24;
+      const elapsedHours = (Date.now() - lastScanMs) / (1000 * 60 * 60);
+      cooldownHoursRemaining = Math.max(0, Math.ceil(cooldownHours - elapsedHours));
+    }
+
     return {
-      remainingScans: data.remainingScans ?? 4,
-      cooldownHoursRemaining: data.cooldownHoursRemaining ?? 0
+      remainingScans: data.remainingScans ?? (cooldownHoursRemaining === 0 ? 1 : 0),
+      cooldownHoursRemaining
     };
   }
 

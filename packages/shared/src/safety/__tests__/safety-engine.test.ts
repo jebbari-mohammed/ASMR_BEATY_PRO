@@ -133,7 +133,7 @@ describe('SafetyEngine Adversarial Test Suite', () => {
     });
 
     expect(result.isSafeToRecommend).toBe(false);
-    expect(result.rejectionReasons).toContain('ACTIVE_CONFLICT_FORBIDDEN_SAME_ROUTINE');
+    expect(result.rejectionReasons).toContain('AVOID_COMPLEX_ACTIVE_COMBINATION_V1');
   });
 
   test('Rejects duplicate step if user already owns an active cleanser/moisturizer/SPF', () => {

@@ -118,7 +118,7 @@ export class SafetyEngine {
             activeConflicts.push(
               `Active conflict between "${existingActive}" and "${candidateActive}": ${conflict.reason}`
             );
-            rejectionReasons.push(`ACTIVE_CONFLICT_${conflict.severity.toUpperCase()}`);
+            rejectionReasons.push('AVOID_COMPLEX_ACTIVE_COMBINATION_V1');
           }
         }
       }

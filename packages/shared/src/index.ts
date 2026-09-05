@@ -18,3 +18,6 @@ export * from './schemas/coach.schema.js';
 // Deterministic Safety Engine
 export * from './safety/default-policy.js';
 export * from './safety/safety-engine.js';
+
+// Versioned Prompts and Fixed Scoring Rubrics
+export * from './rubrics/skin-rubrics.js';

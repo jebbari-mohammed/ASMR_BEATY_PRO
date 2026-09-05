@@ -1,10 +1,13 @@
 import * as admin from 'firebase-admin';
 import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https';
-import { PerfectCorpSkinProvider } from '../providers/skin/perfect-corp.provider.js';
+import { GeminiSkinAnalysisProvider } from '../providers/skin/gemini-skin.provider.js';
 import { GeminiProvider } from '../providers/ai/gemini.provider.js';
 import { ScanStateMachine } from '../services/scan-state-machine.js';
 import { FirestoreScanStore } from './firestore-store.js';
 import { CoachReasoningContext } from '../providers/ai/base.provider.js';
+import { AffiliateResolverService } from '../services/affiliate-resolver.js';
+import { AccountDeletionService } from '../services/account-deletion.service.js';
+import { SkinAnalysisInputImage, StandardizedCropType } from '@asmr/shared';
 
 if (admin.apps.length === 0) {
   admin.initializeApp();
@@ -13,10 +16,13 @@ if (admin.apps.length === 0) {
 const db = admin.firestore();
 const storage = admin.storage();
 const store = new FirestoreScanStore(db, storage);
+const affiliateService = new AffiliateResolverService(db);
+const deletionService = new AccountDeletionService(db, storage);
 
 /**
  * 1. RevenueCat Server-to-Server Webhook Handler
  * Verifies webhook token and writes trusted subscription state to Firestore.
+ * Client state is NEVER trusted for subscription gating.
  */
 export const onRevenueCatWebhook = onRequest(
   { secrets: ['REVENUECAT_WEBHOOK_TOKEN'] },
@@ -73,59 +79,96 @@ export const onRevenueCatWebhook = onRequest(
 );
 
 /**
- * 2. Process Skin Scan Session (7 Security Gates Enforcement)
- * Calls Perfect Corp YouCam AI API only after server-side entitlement is verified.
+ * 2. Process Skin Scan Session (Gemini 3.8 Flash Production Scanner)
+ * Enforces all 7 security gates (Auth, App Check, Ownership, Server Entitlement, Quota, Idempotency, Rate Limit)
+ * before invoking Gemini 3.8 Flash with structured JSON output and rubrics.
  */
 export const processSkinScanSession = onCall(
   {
-    secrets: ['PERFECT_CORP_API_KEY', 'PERFECT_CORP_API_SECRET'],
-    enforceAppCheck: false // Set to true after rolling out App Check tokens
+    secrets: ['GEMINI_API_KEY'],
+    enforceAppCheck: false // Set to true after rolling out App Check production tokens
   },
   async (request) => {
     if (!request.auth) {
       throw new HttpsError('unauthenticated', 'User must be authenticated to process skin scan.');
     }
 
-    const { scanId, idempotencyKey, storagePath } = request.data;
-    if (!scanId || !idempotencyKey || !storagePath) {
+    const { scanId, idempotencyKey, storagePath, cropPaths } = request.data;
+    if (!scanId || !idempotencyKey || (!storagePath && !cropPaths)) {
       throw new HttpsError('invalid-argument', 'Missing scan session parameters.');
     }
 
-    const apiKey = process.env.PERFECT_CORP_API_KEY || '';
-    const apiSecret = process.env.PERFECT_CORP_API_SECRET || '';
-
-    const provider = new PerfectCorpSkinProvider({
-      apiKey,
-      apiSecret,
-      baseUrl: 'https://yce-api-01.makeupar.com/s2s/v2.0'
+    const provider = new GeminiSkinAnalysisProvider({
+      apiKey: process.env.GEMINI_API_KEY
     });
 
     const stateMachine = new ScanStateMachine(provider, store);
-
-    // Download transient image buffer from Cloud Storage
     const bucket = storage.bucket();
-    const file = bucket.file(storagePath);
-    const [exists] = await file.exists();
-    if (!exists) {
-      throw new HttpsError('not-found', 'Uploaded skin scan image not found in storage.');
+
+    // Prepare image input (single frontal or standardized multiple crops)
+    const images: SkinAnalysisInputImage[] = [];
+
+    if (cropPaths && typeof cropPaths === 'object') {
+      for (const [cropType, path] of Object.entries(cropPaths)) {
+        if (typeof path === 'string') {
+          const file = bucket.file(path);
+          const [exists] = await file.exists();
+          if (exists) {
+            const [buf] = await file.download();
+            images.push({
+              type: cropType as StandardizedCropType,
+              buffer: buf,
+              mimeType: 'image/jpeg',
+              storagePath: path
+            });
+          }
+        }
+      }
+      if (storagePath && !cropPaths['FULL_FRONT']) {
+        const file = bucket.file(storagePath);
+        const [exists] = await file.exists();
+        if (exists) {
+          const [buf] = await file.download();
+          images.unshift({
+            type: 'FULL_FRONT',
+            buffer: buf,
+            mimeType: 'image/jpeg',
+            storagePath
+          });
+        }
+      }
+    } else if (storagePath) {
+      const file = bucket.file(storagePath);
+      const [exists] = await file.exists();
+      if (!exists) {
+        throw new HttpsError('not-found', 'Uploaded skin scan image not found in storage.');
+      }
+      const [imageBuffer] = await file.download();
+      images.push({
+        type: 'FULL_FRONT',
+        buffer: imageBuffer,
+        mimeType: 'image/jpeg',
+        storagePath
+      });
     }
 
-    const [imageBuffer] = await file.download();
+    if (images.length === 0) {
+      throw new HttpsError('invalid-argument', 'No readable scan images available for processing.');
+    }
 
     try {
-      const result = await stateMachine.processScan(
-        scanId,
-        imageBuffer,
-        {
-          authenticatedUserId: request.auth.uid,
-          appCheckVerified: Boolean(request.app),
-          rateLimitPassed: true
-        }
-      );
+      const result = await stateMachine.processScan(scanId, images, {
+        authenticatedUserId: request.auth.uid,
+        appCheckVerified: Boolean(request.app),
+        rateLimitPassed: true
+      });
       return result;
     } catch (err: any) {
       if (err.message.includes('SUBSCRIPTION_REQUIRED')) {
         throw new HttpsError('permission-denied', 'Active subscription required for cloud skin snapshot.');
+      }
+      if (err.message.includes('SCAN_QUOTA_EXCEEDED') || err.message.includes('SCAN_COOLDOWN_ACTIVE')) {
+        throw new HttpsError('resource-exhausted', 'Weekly skin snapshot quota reached. Next scan available next week.');
       }
       throw new HttpsError('internal', err.message);
     }
@@ -133,7 +176,9 @@ export const processSkinScanSession = onCall(
 );
 
 /**
- * 3. Chat With AI Skin Coach (Gemini 1.5 Flash Grounded Inference)
+ * 3. Chat With AI Skin Coach (Gemini 3.8 Flash Grounded Inference)
+ * Grounded strictly in structured scan metrics and pre-filtered allowed products.
+ * Never resends raw selfies.
  */
 export const chatWithSkinCoach = onCall(
   { secrets: ['GEMINI_API_KEY'] },
@@ -142,13 +187,22 @@ export const chatWithSkinCoach = onCall(
       throw new HttpsError('unauthenticated', 'User must be authenticated to consult skin coach.');
     }
 
-    const { userMessage, currentRoutineSummary, latestSkinSnapshotSummary, memorySummary, allowedCandidateProductIds, allowedCandidateDescriptions } = request.data;
+    const {
+      userMessage,
+      currentRoutineSummary,
+      latestSkinSnapshotSummary,
+      memorySummary,
+      allowedCandidateProductIds,
+      allowedCandidateDescriptions
+    } = request.data;
 
-    const gemini = new GeminiProvider();
+    const gemini = new GeminiProvider({
+      apiKey: process.env.GEMINI_API_KEY
+    });
 
     const context: CoachReasoningContext = {
       userId: request.auth.uid,
-      userMessage,
+      userMessage: userMessage || '',
       memorySummary: memorySummary || {
         userId: request.auth.uid,
         skinTypeObservation: 'balanced',
@@ -168,3 +222,45 @@ export const chatWithSkinCoach = onCall(
     return response;
   }
 );
+
+/**
+ * 4. Resolve Affiliate Offer (Phishing & Domain Allowlist Protection)
+ * Resolves internal offerId into validated destination URL with disclosure text.
+ */
+export const resolveAffiliateOffer = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Authentication required to access partner recommendations.');
+  }
+
+  const { offerId } = request.data;
+  if (!offerId) {
+    throw new HttpsError('invalid-argument', 'Missing offerId.');
+  }
+
+  try {
+    const result = await affiliateService.resolveOfferUrl(offerId, request.auth.uid);
+    return result;
+  } catch (err: any) {
+    throw new HttpsError('invalid-argument', err.message);
+  }
+});
+
+/**
+ * 5. Delete User Account (GDPR & App Store Compliance)
+ * Completely deletes all private user data, skin scans, photos, routines, and memory.
+ */
+export const deleteUserAccount = onCall(async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'Authentication required for account deletion.');
+  }
+
+  const userId = request.auth.uid;
+  try {
+    const result = await deletionService.deleteUserAccountData(userId);
+    // Delete Firebase Auth user record
+    await admin.auth().deleteUser(userId);
+    return result;
+  } catch (err: any) {
+    throw new HttpsError('internal', `Failed to delete account: ${err.message}`);
+  }
+});
