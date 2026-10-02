@@ -6,9 +6,11 @@ GitHub Pages publishes the root of the public repository's `main` branch.
 
 The site uses original project imagery, actual private-test app screenshots,
 and self-hosted fonts. Keep the font license files with the font files. All
-links between pages are relative so the site works at a GitHub Pages project
-path. The app is still in private testing, so the site does not link to a
-public store listing. Add verified store URLs only when those listings are
+links between regular pages are relative so the site works at a GitHub Pages
+project path. The 404 page uses project-root paths so its styles and recovery
+links also work for deeply nested missing URLs. The app is still in private
+testing, so the site does not link to a public store listing. Add verified
+store URLs only when those listings are
 public; publishing this website does not change the mobile app's release.
 
 To preview locally, run `python3 -m http.server 8766 --directory hosting` from
