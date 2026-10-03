@@ -28,6 +28,7 @@ import { useAccess } from '../../src/services/access-context';
 import auth from '@react-native-firebase/auth';
 import { UnsafeLocalCleanupError } from '../../src/services/access-signout';
 import { ReminderService, ReminderPreferences, ReminderTime } from '../../src/services/reminder-service';
+import { clearLegacyRoutineCheckoffs } from '../../src/services/legacy-routine-cleanup';
 
 export default function SettingsModal() {
   const router = useRouter();
@@ -164,8 +165,13 @@ export default function SettingsModal() {
     setDeleteDialogOpen(false);
     router.replace('/onboarding');
     if (resetFailed) {
-      Alert.alert('Account deleted', 'Your cloud account was deleted and you are signed out. Some onboarding progress on this device could not be cleared. Contact support if it remains.');
+      Alert.alert('Account deleted', 'Your cloud account was deleted and you are signed out. Some older data on this device could not be cleared. Contact support for help removing it.');
     }
+    // Retired device-only checkoffs are not read by current screens. Erase them
+    // after Firebase sign-out so a slow Keychain call cannot hold the session open.
+    void clearLegacyRoutineCheckoffs().catch(() => {
+      if (!resetFailed) Alert.alert('Account deleted', 'Your cloud account was deleted and you are signed out. Some older data on this device could not be cleared. Contact support for help removing it.');
+    });
   };
 
   const submitAccountDeletion = async () => {
@@ -175,6 +181,7 @@ export default function SettingsModal() {
     setDeleteError(null);
     setIsDeleting(true);
     let deletedOnServer = cloudAccountDeleted;
+    let cloudRequestStarted = false;
     try {
       if (!deletedOnServer) {
         const user = auth().currentUser;
@@ -185,12 +192,16 @@ export default function SettingsModal() {
         if (auth().currentUser?.uid !== confirmedUid) {
           throw new Error('Account changed while confirming deletion.');
         }
+        cloudRequestStarted = true;
         const result = await functions().httpsCallable('deleteUserAccount')();
         if ((result.data as { deleted?: boolean } | undefined)?.deleted !== true) {
           throw new Error('Account deletion could not be confirmed. Please try again.');
         }
         deletedOnServer = true;
         setCloudAccountDeleted(true);
+        // Admin deletion can invalidate Firebase Auth before AccessProvider
+        // reads the UID for its usual reminder cancellation.
+        void ReminderService.disable(confirmedUid).catch(() => undefined);
       }
       await finishDeletedAccountCleanup();
     } catch (cause) {
@@ -204,6 +215,8 @@ export default function SettingsModal() {
         setDeleteError('That password was not accepted. Check it and try again.');
       } else if (code === 'functions/failed-precondition') {
         setDeleteError('Security confirmation expired. Enter your password again to retry.');
+      } else if (cloudRequestStarted) {
+        setDeleteError('We could not confirm whether cloud deletion finished. Your account may already be deleted. Try again or contact support.');
       } else {
         setDeleteError(cause instanceof Error && cause.message === 'Sign in with your email and try again.'
           ? cause.message : 'Account deletion could not finish. Please try again or contact support.');
@@ -233,10 +246,7 @@ export default function SettingsModal() {
         text: 'Clear device data', style: 'destructive', onPress: async () => {
           setIsDeleting(true);
           try {
-            const raw = await SecureStore.getItemAsync('asmr_routine_days_v1');
-            const days: string[] = raw ? JSON.parse(raw) : [];
-            await Promise.all(days.map(day => SecureStore.deleteItemAsync(`asmr_daily_routine_${day}`)));
-            await SecureStore.deleteItemAsync('asmr_routine_days_v1');
+            await clearLegacyRoutineCheckoffs();
             await SecureStore.deleteItemAsync('asmr_latest_skin_scan_v1');
             await OnboardingService.reset();
             Alert.alert('Device data cleared', 'Local onboarding answers and legacy checkoffs were removed. Your cloud routine record remains.', [

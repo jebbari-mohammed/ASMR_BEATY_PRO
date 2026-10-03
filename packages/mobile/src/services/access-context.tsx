@@ -152,13 +152,13 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
     setRevalidating(false);
     setState('loading');
     const uid = auth().currentUser?.uid;
-    if (uid) await ReminderService.disable(uid).catch(() => undefined);
     let localCleanupFailed = false;
     try {
       ({ localCleanupFailed } = await signOutServices(
         () => OnboardingService.clearDevicePersonalData(),
         () => SubscriptionService.forgetIdentity(),
-        () => auth().signOut()
+        () => auth().signOut(),
+        uid ? () => ReminderService.disable(uid) : undefined
       ));
     } catch (cause) {
       // A failed Firebase sign-out must not leave a permanent loading screen.

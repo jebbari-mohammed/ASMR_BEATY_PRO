@@ -5,6 +5,7 @@ import { REVENUECAT_CONFIG, SubscriptionService } from '../subscription-service'
 import { ScanService } from '../scan-service';
 import { CoachAIEngine } from '../coach-ai-engine';
 import { OnboardingService, INITIAL_ONBOARDING_STATE } from '../onboarding-machine';
+import { clearLegacyRoutineCheckoffs } from '../legacy-routine-cleanup';
 import { isFeatureReady } from '../feature-readiness';
 
 let mockCurrentUser: { uid: string; emailVerified: boolean } | null = null;
@@ -404,6 +405,23 @@ test('a new store identity waits for the previous account logout to finish', asy
     finishLogout?.();
     REVENUECAT_CONFIG.appleApiKey = previousKey;
   }
+});
+
+test('legacy device-only checkoffs are removed before their day index', async () => {
+  storeGet.mockResolvedValue('["2026-09-10","2026-09-10","2026-09-11"]');
+  await clearLegacyRoutineCheckoffs();
+  expect(storeDelete.mock.calls.map(([key]) => key)).toEqual([
+    'asmr_daily_routine_2026-09-10',
+    'asmr_daily_routine_2026-09-11',
+    'asmr_routine_days_v1'
+  ]);
+});
+
+test('legacy day index remains for retry if a checkoff deletion fails', async () => {
+  storeGet.mockResolvedValue('["2026-09-10"]');
+  storeDelete.mockRejectedValue(new Error('Keychain locked'));
+  await expect(clearLegacyRoutineCheckoffs()).rejects.toThrow('could not be removed');
+  expect(storeDelete).not.toHaveBeenCalledWith('asmr_routine_days_v1');
 });
 
 test('billing verification outage does not appear as an expired membership', async () => {

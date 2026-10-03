@@ -34,6 +34,19 @@ test('a stalled store logout does not leave sign-out loading after Firebase clos
   finishStoreLogout?.();
 });
 
+test('stalled notification cancellation cannot prevent Firebase sign-out', async () => {
+  const firebase = jest.fn().mockResolvedValue(undefined);
+  const reminders = jest.fn(() => new Promise<void>(() => undefined));
+  await expect(signOutServices(
+    async () => undefined,
+    async () => undefined,
+    firebase,
+    reminders
+  )).resolves.toEqual({ localCleanupFailed: false });
+  expect(reminders).toHaveBeenCalledTimes(1);
+  expect(firebase).toHaveBeenCalledTimes(1);
+});
+
 test('Firebase sign-out is held when old device data has no durable cleanup guard', async () => {
   const firebase = jest.fn().mockResolvedValue(undefined);
   await expect(signOutServices(

@@ -5,8 +5,13 @@ export class UnsafeLocalCleanupError extends Error {}
 export async function signOutServices(
   clearLocalData: () => Promise<void>,
   forgetStoreIdentity: () => Promise<void>,
-  signOutFirebase: () => Promise<void>
+  signOutFirebase: () => Promise<void>,
+  stopReminders?: () => Promise<void>
 ): Promise<{ localCleanupFailed: boolean }> {
+  // Notification APIs can stall. Cancellation remains best effort and must not
+  // hold the authenticated session open or delay the durable local guard.
+  try { if (stopReminders) void stopReminders().catch(() => undefined); }
+  catch { /* Keep progressing to the privacy boundary. */ }
   let localCleanupFailed = false;
   try { await clearLocalData(); }
   catch (cause) {
