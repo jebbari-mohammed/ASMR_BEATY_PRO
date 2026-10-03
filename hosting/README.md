@@ -13,6 +13,13 @@ testing, so the site does not link to a public store listing. Add verified
 store URLs only when those listings are public. Publishing this website does
 not change the mobile app's release.
 
+The public routine guide is editorial content based on linked American Academy
+of Dermatology sources. Keep its general cosmetic advice, source links, app
+feature descriptions, and publication date accurate when updating it. The
+HTML pages use a restrictive meta Content Security Policy because GitHub Pages
+does not let this project set response headers. Keep all assets local and test
+the pages in a browser after changing the policy.
+
 To preview locally, run `python3 -m http.server 8766 --directory hosting` from
 the repository root and open http://127.0.0.1:8766/.
 
