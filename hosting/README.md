@@ -10,8 +10,8 @@ links between regular pages are relative so the site works at a GitHub Pages
 project path. The 404 page uses project-root paths so its styles and recovery
 links also work for deeply nested missing URLs. The app is still in private
 testing, so the site does not link to a public store listing. Add verified
-store URLs only when those listings are
-public; publishing this website does not change the mobile app's release.
+store URLs only when those listings are public. Publishing this website does
+not change the mobile app's release.
 
 To preview locally, run `python3 -m http.server 8766 --directory hosting` from
 the repository root and open http://127.0.0.1:8766/.
@@ -28,3 +28,10 @@ git push origin <split-commit-hash>:main
 The split commit can be pushed normally because the first website deployment
 was created with the same subtree split. Check the Pages build and public URL
 after each update.
+
+The XML sitemap is at `/ASMR_BEATY_PRO/sitemap.xml`. Because this is a GitHub
+Pages project site, a `robots.txt` file inside this directory would be served
+under `/ASMR_BEATY_PRO/` rather than the host root, so search crawlers would
+not use it. Submit the sitemap through the verified URL-prefix property in
+Google Search Console. Keep the `google3e206f76b54dc34c.html` file in the
+site root so ownership verification remains valid.
