@@ -1,9 +1,12 @@
 import * as admin from 'firebase-admin';
 import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
+import * as functionsV1 from 'firebase-functions/v1';
 import { AccountDeletionService } from '../services/account-deletion.service.js';
 import { RevenueCatVerifier } from '../services/revenuecat-verifier.js';
 import { VerifiedEntitlementStore } from '../services/verified-entitlement-store.js';
+import { SubscriptionVerificationLimiter } from '../services/subscription-verification-limiter.js';
+import { requireRecentAuthentication } from './recent-auth.js';
 
 if (admin.apps.length === 0) {
   admin.initializeApp();
@@ -14,6 +17,7 @@ db.settings({ ignoreUndefinedProperties: true });
 const storage = admin.storage();
 const deletionService = new AccountDeletionService(db, storage, admin.auth());
 const entitlementStore = new VerifiedEntitlementStore(db, admin.auth());
+const subscriptionVerificationLimiter = new SubscriptionVerificationLimiter(db);
 
 /**
  * 1. RevenueCat Server-to-Server Webhook Handler
@@ -82,6 +86,7 @@ export const verifySubscriptionAccess = onCall(
       throw new HttpsError('permission-denied', 'Verify your email before accessing a membership.');
     }
     try {
+      await subscriptionVerificationLimiter.consume(request.auth.uid);
       const verified = await new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(request.auth.uid);
       if (!await entitlementStore.cache(request.auth.uid, verified)) {
         throw new HttpsError('failed-precondition', 'This account is unavailable.');
@@ -118,6 +123,7 @@ export const deleteUserAccount = onCall({ enforceAppCheck: true }, async (reques
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentication required for account deletion.');
   }
+  requireRecentAuthentication(request.auth.token.auth_time);
 
   const userId = request.auth.uid;
   try {
@@ -129,6 +135,13 @@ export const deleteUserAccount = onCall({ enforceAppCheck: true }, async (reques
     throw new HttpsError('internal', 'Account deletion could not be completed. Please try again.');
   }
 });
+
+/** Recover data cleanup if an account is deleted directly through Firebase Auth. */
+export const cleanupDeletedAuthUser = functionsV1
+  .runWith({ timeoutSeconds: 300, failurePolicy: true })
+  .auth.user().onDelete(async user => {
+    await deletionService.deleteUserAccount(user.uid, { skipAuthDelete: true });
+  });
 
 /**
  * Recover a guard if Auth was deleted but the final TTL update failed. Only

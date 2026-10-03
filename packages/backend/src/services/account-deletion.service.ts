@@ -8,23 +8,19 @@ export class AccountDeletionService {
   ) {}
 
   /** Erase account data and Auth, then start the stale-token guard's TTL. */
-  async deleteUserAccount(userId: string): Promise<{ deleted: boolean; deletedCollections: string[] }> {
+  async deleteUserAccount(
+    userId: string,
+    options: { skipAuthDelete?: boolean } = {}
+  ): Promise<{ deleted: boolean; deletedCollections: string[] }> {
     if (!/^[A-Za-z0-9:_-]{1,128}$/.test(userId)) throw new Error('Invalid account ID');
-    const bucket = this.storage.bucket();
-    const prefixes = [
-      `transient-scans/${userId}/`,
-      `progress-photos/${userId}/`,
-      `spot-journal/${userId}/`
-    ];
-
-    // A storage failure must keep the account available for a safe retry.
-    for (const prefix of prefixes) {
-      await bucket.deleteFiles({ prefix, force: true });
+    if (options.skipAuthDelete && !await this.isAuthMissing(userId)) {
+      // A delayed Auth event may refer to an old account whose UID has since
+      // been recreated. Leave the new account and its data untouched.
+      return { deleted: false, deletedCollections: [] };
     }
-
+    // Install the guard before any cleanup. An Auth onDelete trigger can arrive
+    // after the Auth record is gone, while its old ID token remains valid.
     // The guard has no TTL until every cleanup step and Auth deletion succeed.
-    // It blocks stale ID tokens and delayed RevenueCat webhooks throughout a
-    // partial failure, and retries replace any legacy expiring guard.
     const guard = this.db.collection('accountDeletionGuards').doc(userId);
     const profile = this.db.collection('users').doc(userId);
     const entitlement = profile.collection('entitlements').doc('pro');
@@ -40,11 +36,31 @@ export class AccountDeletionService {
           nextCheckAt: admin.firestore.Timestamp.now()
         });
       }
-      transaction.set(profile, { deletionStatus: 'deleting' }, { merge: true });
-      // Revoking this document in the same commit closes paid client access
-      // before recursiveDelete begins.
-      transaction.delete(entitlement);
+      if (state !== 'completed') {
+        transaction.set(profile, { deletionStatus: 'deleting' }, { merge: true });
+        // Revoking this document in the same commit closes paid client access
+        // before recursiveDelete begins.
+        transaction.delete(entitlement);
+      }
     });
+
+    if (options.skipAuthDelete && !await this.isAuthMissing(userId)) {
+      // If an Admin recreated the UID while the guard was being committed,
+      // retain that guard for support review and avoid destructive cleanup.
+      throw new Error('Auth account reappeared during deletion recovery');
+    }
+
+    // A storage failure leaves a non-expiring guard; event retries or a caller
+    // retry can complete cleanup without reopening stale-token access.
+    const bucket = this.storage.bucket();
+    const prefixes = [
+      `transient-scans/${userId}/`,
+      `progress-photos/${userId}/`,
+      `spot-journal/${userId}/`
+    ];
+    for (const prefix of prefixes) {
+      await bucket.deleteFiles({ prefix, force: true });
+    }
 
     // recursiveDelete includes nested journal entries and conversation messages.
     await this.db.recursiveDelete(profile);
@@ -63,10 +79,12 @@ export class AccountDeletionService {
 
     // A retry can observe an already-deleted Auth user after the earlier
     // invocation completed Auth deletion but failed to finalize the guard.
-    try {
-      await this.auth.deleteUser(userId);
-    } catch (error) {
-      if (!isAuthUserNotFound(error)) throw error;
+    if (!options.skipAuthDelete) {
+      try {
+        await this.auth.deleteUser(userId);
+      } catch (error) {
+        if (!isAuthUserNotFound(error)) throw error;
+      }
     }
 
     // Confirm Auth is absent before adding a TTL. If this update fails, the
@@ -82,12 +100,7 @@ export class AccountDeletionService {
 
   /** Finalize only a guard whose Auth account is definitively absent. */
   async finalizeGuardForMissingAuth(userId: string): Promise<boolean> {
-    try {
-      await this.auth.getUser(userId);
-      return false;
-    } catch (error) {
-      if (!isAuthUserNotFound(error)) throw error;
-    }
+    if (!await this.isAuthMissing(userId)) return false;
 
     const guard = this.db.collection('accountDeletionGuards').doc(userId);
     return this.db.runTransaction(async (transaction) => {
@@ -102,6 +115,16 @@ export class AccountDeletionService {
       });
       return true;
     });
+  }
+
+  private async isAuthMissing(userId: string): Promise<boolean> {
+    try {
+      await this.auth.getUser(userId);
+      return false;
+    } catch (error) {
+      if (!isAuthUserNotFound(error)) throw error;
+      return true;
+    }
   }
 }
 
