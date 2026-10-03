@@ -1,6 +1,6 @@
 # ASMR Beauty Pro website
 
-This directory is the source for the static website at
+The `hosting/` directory is the source for the static website at
 https://jebbari-mohammed.github.io/ASMR_BEATY_PRO/. It needs no build step.
 GitHub Pages publishes the root of the public repository's `main` branch.
 
