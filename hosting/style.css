@@ -149,7 +149,7 @@ button, summary { font: inherit; }
 .availability .display-heading { margin: 28px 0 27px; }
 .availability p:not(.section-index) { max-width: 600px; line-height: 1.7; font-size: 1.07rem; color: #d2ded1; margin-bottom: 32px; }
 .availability-mark { justify-self: center; width: min(100%, 260px); padding: 8px; border: 1px solid #54725c; border-radius: 41px; transform: rotate(8deg); box-shadow: 0 18px 40px rgba(0,0,0,.15); }
-.availability-mark img { border-radius: 32px; }
+.availability-mark img { width: 100%; height: auto; border-radius: 32px; }
 
 .site-footer { background: #13291f; color: #d8e2d5; padding-top: clamp(70px, 8vw, 120px); }
 .footer-top { display: grid; grid-template-columns: 1fr 1fr; gap: 80px; padding-bottom: clamp(65px, 8vw, 110px); }
