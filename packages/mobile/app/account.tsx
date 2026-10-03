@@ -8,11 +8,12 @@ import { colors } from '../src/theme/tokens';
 import { useAccess } from '../src/services/access-context';
 import { EditorialStatusBackdrop } from '../src/components/EditorialStatusBackdrop';
 import { OnboardingService } from '../src/services/onboarding-machine';
+import { UnsafeLocalCleanupError } from '../src/services/access-signout';
 
 export default function AccountScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { state, refresh, signOut } = useAccess();
+  const { state, error: accessError, refresh, signOut } = useAccess();
   const [mode, setMode] = useState<'signIn' | 'create'>('create');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -97,7 +98,8 @@ export default function AccountScreen() {
     setBusy(true);
     setMessage(null);
     try { await signOut(); setEmail(''); setPassword(''); }
-    catch { setMessage('Could not switch accounts. Please try again.'); }
+    catch (cause) { setMessage(cause instanceof UnsafeLocalCleanupError
+      ? cause.message : 'Could not switch accounts. Please try again.'); }
     finally { setBusy(false); }
   }
 
@@ -130,6 +132,7 @@ export default function AccountScreen() {
           <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="Email address" placeholderTextColor={colors.textTertiary} value={email} onChangeText={setEmail} onFocus={revealForm} style={styles.input} />
           <TextInput accessibilityLabel="Password" autoCapitalize="none" autoComplete={mode === 'create' ? 'new-password' : 'current-password'} secureTextEntry placeholder="Password" placeholderTextColor={colors.textTertiary} value={password} onChangeText={setPassword} onFocus={revealForm} style={styles.input} />
           {message && <Text style={styles.error}>{message}</Text>}
+          {accessError && <Text style={styles.error}>{accessError}</Text>}
           <Pressable disabled={busy} onPress={submit} style={[styles.cta, busy && { opacity: 0.6 }]}>
             {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{mode === 'create' ? 'Continue' : 'Sign in'}</Text>}
           </Pressable>

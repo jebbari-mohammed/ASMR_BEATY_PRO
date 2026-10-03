@@ -17,6 +17,7 @@ export const REVENUECAT_CONFIG = {
 export class SubscriptionService {
   private static configured = false;
   private static identifiedUid: string | null = null;
+  private static pendingLogout: Promise<void> | null = null;
 
   static isStoreConfigured(): boolean {
     const apiKey = Platform.OS === 'ios' ? REVENUECAT_CONFIG.appleApiKey : REVENUECAT_CONFIG.googleApiKey;
@@ -42,6 +43,9 @@ export class SubscriptionService {
         return;
       }
       if (!uid || auth().currentUser?.uid !== uid) return;
+      // Do not identify another account while a prior SDK logout is pending.
+      // The caller will show unavailable and can retry after it settles.
+      if (this.pendingLogout) return;
       if (!this.configured) {
         Purchases.configure({ apiKey, appUserID: uid });
         this.configured = true;
@@ -70,6 +74,9 @@ export class SubscriptionService {
       return (result.data as { isPro?: boolean }).isPro === true;
     } catch (rcErr) {
       console.warn('[RevenueCat] CustomerInfo check warning:', rcErr);
+      if ((rcErr as { code?: string })?.code === 'functions/resource-exhausted') {
+        throw new Error('Too many membership checks. Wait a minute, then try again.');
+      }
       throw new Error('Membership verification is temporarily unavailable. Please try again.');
     }
   }
@@ -129,7 +136,13 @@ export class SubscriptionService {
   static async forgetIdentity(): Promise<void> {
     this.identifiedUid = null;
     if (this.configured) {
-      await Purchases.logOut();
+      if (this.pendingLogout) return this.pendingLogout;
+      const logout = Purchases.logOut().then(() => undefined);
+      this.pendingLogout = logout;
+      try { await logout; }
+      finally {
+        if (this.pendingLogout === logout) this.pendingLogout = null;
+      }
     }
   }
 

@@ -9,7 +9,10 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
-  Platform
+  Platform,
+  Modal,
+  KeyboardAvoidingView,
+  TextInput
 } from 'react-native';
 import Purchases from 'react-native-purchases';
 import { useRouter } from 'expo-router';
@@ -23,6 +26,7 @@ import * as SecureStore from 'expo-secure-store';
 import functions from '@react-native-firebase/functions';
 import { useAccess } from '../../src/services/access-context';
 import auth from '@react-native-firebase/auth';
+import { UnsafeLocalCleanupError } from '../../src/services/access-signout';
 import { ReminderService, ReminderPreferences, ReminderTime } from '../../src/services/reminder-service';
 
 export default function SettingsModal() {
@@ -33,6 +37,10 @@ export default function SettingsModal() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [cloudAccountDeleted, setCloudAccountDeleted] = useState(false);
   const [reminders, setReminders] = useState<ReminderPreferences | null>(null);
   const [reminderOwnerUid, setReminderOwnerUid] = useState<string | null>(null);
   const [reminderBusy, setReminderBusy] = useState(false);
@@ -106,8 +114,9 @@ export default function SettingsModal() {
     try {
       await signOut();
       router.replace('/account');
-    } catch {
-      Alert.alert('Could not sign out', 'Please try again.');
+    } catch (cause) {
+      Alert.alert('Could not sign out', cause instanceof UnsafeLocalCleanupError
+        ? cause.message : 'Please try again.');
     } finally {
       setIsSigningOut(false);
     }
@@ -131,19 +140,88 @@ export default function SettingsModal() {
     }
   };
 
+  const closeDeleteDialog = () => {
+    if (isDeleting) return;
+    setDeletePassword('');
+    setDeleteError(null);
+    setDeleteDialogOpen(false);
+  };
+
+  const finishDeletedAccountCleanup = async () => {
+    let resetFailed = false;
+    try { await OnboardingService.reset(); }
+    catch { resetFailed = true; }
+    try { await signOut(); }
+    catch (cause) {
+      if (cause instanceof UnsafeLocalCleanupError) throw cause;
+      await auth().signOut();
+    }
+    if (resetFailed) {
+      try { await OnboardingService.reset(); resetFailed = false; }
+      catch { /* Personal answers were still quarantined by signOut. */ }
+    }
+    setCloudAccountDeleted(false);
+    setDeleteDialogOpen(false);
+    router.replace('/onboarding');
+    if (resetFailed) {
+      Alert.alert('Account deleted', 'Your cloud account was deleted and you are signed out. Some onboarding progress on this device could not be cleared. Contact support if it remains.');
+    }
+  };
+
+  const submitAccountDeletion = async () => {
+    if (isDeleting || (!cloudAccountDeleted && !deletePassword)) return;
+    const enteredPassword = deletePassword;
+    setDeletePassword('');
+    setDeleteError(null);
+    setIsDeleting(true);
+    let deletedOnServer = cloudAccountDeleted;
+    try {
+      if (!deletedOnServer) {
+        const user = auth().currentUser;
+        if (!user?.email) throw new Error('Sign in with your email and try again.');
+        const confirmedUid = user.uid;
+        await user.reauthenticateWithCredential(auth.EmailAuthProvider.credential(user.email, enteredPassword));
+        await user.getIdToken(true);
+        if (auth().currentUser?.uid !== confirmedUid) {
+          throw new Error('Account changed while confirming deletion.');
+        }
+        const result = await functions().httpsCallable('deleteUserAccount')();
+        if ((result.data as { deleted?: boolean } | undefined)?.deleted !== true) {
+          throw new Error('Account deletion could not be confirmed. Please try again.');
+        }
+        deletedOnServer = true;
+        setCloudAccountDeleted(true);
+      }
+      await finishDeletedAccountCleanup();
+    } catch (cause) {
+      const code = typeof cause === 'object' && cause !== null && 'code' in cause
+        ? String(cause.code) : '';
+      if (deletedOnServer) {
+        setDeleteError(cause instanceof UnsafeLocalCleanupError
+          ? `Your cloud account was deleted. ${cause.message}`
+          : 'Your cloud account was deleted, but device sign-out did not finish. Please retry device cleanup.');
+      } else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setDeleteError('That password was not accepted. Check it and try again.');
+      } else if (code === 'functions/failed-precondition') {
+        setDeleteError('Security confirmation expired. Enter your password again to retry.');
+      } else {
+        setDeleteError(cause instanceof Error && cause.message === 'Sign in with your email and try again.'
+          ? cause.message : 'Account deletion could not finish. Please try again or contact support.');
+      }
+    } finally {
+      setDeletePassword('');
+      setIsDeleting(false);
+    }
+  };
+
   const handleDeleteAccount = () => {
+    if (cloudAccountDeleted) { setDeleteDialogOpen(true); return; }
     Alert.alert('Delete your account?', 'This permanently removes your app account and routine records. Cancel any active subscription separately in App Store or Google Play settings.', [
       { text: 'Keep account', style: 'cancel' },
-      { text: 'Delete account', style: 'destructive', onPress: async () => {
-        setIsDeleting(true);
-        try {
-          await functions().httpsCallable('deleteUserAccount')();
-          await OnboardingService.reset().catch(() => undefined);
-          await signOut().catch(() => auth().signOut());
-          router.replace('/onboarding');
-        } catch {
-          Alert.alert('Deletion could not finish', 'Your account may still be active. Please retry or contact support.');
-        } finally { setIsDeleting(false); }
+      { text: 'Continue', style: 'destructive', onPress: () => {
+        setDeleteError(null);
+        setDeletePassword('');
+        setDeleteDialogOpen(true);
       } }
     ]);
   };
@@ -373,6 +451,43 @@ export default function SettingsModal() {
 
         <View style={{ height: spacing.huge }} />
       </ScrollView>
+      <Modal transparent visible={deleteDialogOpen} animationType="fade" onRequestClose={closeDeleteDialog}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.deleteModalBackdrop}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.deleteModalScrollContent}>
+          <View style={styles.deleteModalCard} accessibilityViewIsModal>
+            <Text style={styles.deleteModalEyebrow}>ACCOUNT PRIVACY</Text>
+            <Text style={styles.deleteModalTitle}>{cloudAccountDeleted ? 'Finish device cleanup.' : 'Confirm it’s you.'}</Text>
+            <Text style={styles.deleteModalCopy}>{cloudAccountDeleted
+              ? 'Your cloud account has been deleted. Finish clearing this device and signing out.'
+              : `Enter the password for ${email ?? 'your account'} before permanently deleting your account and cloud data.`}</Text>
+            {!cloudAccountDeleted && <TextInput
+              accessibilityLabel="Account password"
+              autoCapitalize="none"
+              autoComplete="current-password"
+              secureTextEntry
+              placeholder="Password"
+              placeholderTextColor={colors.textTertiary}
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              style={styles.deletePasswordInput}
+            />}
+            {deleteError && <Text accessibilityRole="alert" style={styles.deleteModalError}>{deleteError}</Text>}
+            <TouchableOpacity
+              style={[styles.deleteModalAction, (isDeleting || (!cloudAccountDeleted && !deletePassword)) && styles.deleteModalActionDisabled]}
+              disabled={isDeleting || (!cloudAccountDeleted && !deletePassword)}
+              onPress={submitAccountDeletion}
+              accessibilityRole="button"
+            >
+              {isDeleting ? <ActivityIndicator color={colors.surface} /> :
+                <Text style={styles.deleteModalActionText}>{cloudAccountDeleted ? 'Retry device cleanup' : 'Delete my account'}</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.deleteModalCancel} disabled={isDeleting} onPress={closeDeleteDialog} accessibilityRole="button">
+              <Text style={styles.deleteModalCancelText}>{cloudAccountDeleted ? 'Close for now' : 'Keep my account'}</Text>
+            </TouchableOpacity>
+          </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -549,5 +664,81 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textTertiary,
     marginTop: 2
+  },
+  deleteModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(19, 36, 28, 0.68)'
+  },
+  deleteModalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.base
+  },
+  deleteModalCard: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg
+  },
+  deleteModalEyebrow: {
+    ...typography.captionBold,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    color: colors.terracotta,
+    marginBottom: spacing.xs
+  },
+  deleteModalTitle: {
+    ...typography.title2,
+    fontSize: 23,
+    color: colors.textPrimary,
+    marginBottom: spacing.xs
+  },
+  deleteModalCopy: {
+    ...typography.body,
+    fontSize: 14,
+    lineHeight: 21,
+    color: colors.textSecondary,
+    marginBottom: spacing.md
+  },
+  deletePasswordInput: {
+    minHeight: 50,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.sm,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm
+  },
+  deleteModalError: {
+    ...typography.caption,
+    fontSize: 12,
+    lineHeight: 18,
+    color: colors.terracotta,
+    marginBottom: spacing.sm
+  },
+  deleteModalAction: {
+    minHeight: 48,
+    borderRadius: radii.sm,
+    backgroundColor: colors.terracotta,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  deleteModalActionDisabled: { opacity: 0.45 },
+  deleteModalActionText: {
+    ...typography.body,
+    fontWeight: '700',
+    color: colors.surface
+  },
+  deleteModalCancel: {
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: spacing.xs
+  },
+  deleteModalCancelText: {
+    ...typography.body,
+    color: colors.textSecondary
   }
 });

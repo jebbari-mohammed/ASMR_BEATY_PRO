@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAccess } from '../src/services/access-context';
 import { localImages } from '../src/theme/images';
 import { colors } from '../src/theme/tokens';
+import { UnsafeLocalCleanupError } from '../src/services/access-signout';
 
 export default function AccessUnavailableScreen() {
   const router = useRouter();
@@ -32,7 +33,8 @@ export default function AccessUnavailableScreen() {
     setBusy(true);
     setSignOutError(null);
     try { await signOut(); }
-    catch { setSignOutError('Could not switch accounts. Please try again.'); }
+    catch (cause) { setSignOutError(cause instanceof UnsafeLocalCleanupError
+      ? cause.message : 'Could not switch accounts. Please try again.'); }
     finally { setBusy(false); }
   }
 

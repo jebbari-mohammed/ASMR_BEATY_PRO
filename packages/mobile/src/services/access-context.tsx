@@ -5,6 +5,7 @@ import appCheck from '@react-native-firebase/app-check';
 import { SubscriptionService } from './subscription-service';
 import { ReminderService } from './reminder-service';
 import { OnboardingService } from './onboarding-machine';
+import { signOutServices } from './access-signout';
 
 type AccessState = 'loading' | 'signedOut' | 'verifyEmail' | 'checking' | 'subscribed' | 'paywall' | 'unavailable';
 type AccessContextValue = {
@@ -27,6 +28,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
   const verifiedUid = useRef<string | null>(null);
   const pendingAutomaticRefresh = useRef<{ uid: string | null; promise: Promise<void> } | null>(null);
   const lastForegroundRefresh = useRef(0);
+  const signingOut = useRef(false);
 
   const runRefresh = useCallback((automatic: boolean): Promise<void> => {
     const uid = auth().currentUser?.uid ?? null;
@@ -111,7 +113,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
       if (!mounted) return;
       appCheckReady = true;
       unsubscribe = auth().onAuthStateChanged(() => {
-        if (mounted) void runRefresh(true);
+        if (mounted && !signingOut.current) void runRefresh(true);
       });
       lastForegroundRefresh.current = Date.now();
       void runRefresh(true);
@@ -124,7 +126,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
       if (status !== 'active') return;
       const resumed = returnedFromBackground;
       returnedFromBackground = false;
-      if (!mounted || !appCheckReady) return;
+      if (!mounted || !appCheckReady || signingOut.current) return;
       const now = Date.now();
       // Always recheck after a real background return. A cooldown only filters
       // duplicate active/inactive events that did not put the app in background.
@@ -143,6 +145,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
   }, [runRefresh]);
 
   const signOut = useCallback(async () => {
+    signingOut.current = true;
     ++refreshId.current;
     verifiedUid.current = null;
     pendingAutomaticRefresh.current = null;
@@ -150,20 +153,23 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
     setState('loading');
     const uid = auth().currentUser?.uid;
     if (uid) await ReminderService.disable(uid).catch(() => undefined);
+    let localCleanupFailed = false;
     try {
-      // Account previews use a device-global key until binding. Clear it before
-      // another person can enter a new account on this device.
-      await OnboardingService.clearDevicePersonalData();
-      // Store logout can fail without a connection; Firebase sign-out is the
-      // security boundary and must still complete.
-      await SubscriptionService.forgetIdentity().catch(() => undefined);
-      await auth().signOut();
+      ({ localCleanupFailed } = await signOutServices(
+        () => OnboardingService.clearDevicePersonalData(),
+        () => SubscriptionService.forgetIdentity(),
+        () => auth().signOut()
+      ));
     } catch (cause) {
       // A failed Firebase sign-out must not leave a permanent loading screen.
+      signingOut.current = false;
       await runRefresh(false);
       throw cause;
     }
-    setError(null);
+    signingOut.current = false;
+    setError(localCleanupFailed
+      ? 'Signed out. Old device data will be cleared before a saved plan is shown.'
+      : null);
     setEmail(null);
     setState('signedOut');
   }, [runRefresh]);

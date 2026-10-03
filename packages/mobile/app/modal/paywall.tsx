@@ -14,6 +14,7 @@ import { EditorialStatusBackdrop } from '../../src/components/EditorialStatusBac
 import { OnboardingService } from '../../src/services/onboarding-machine';
 import { buildStarterPlan, StarterPlan } from '../../src/services/personalized-starter';
 import { annualSavingsPercent } from '../../src/services/paywall-pricing';
+import { UnsafeLocalCleanupError } from '../../src/services/access-signout';
 
 function periodLabel(pkg: PurchasesPackage): string {
   const period = pkg.product.subscriptionPeriod;
@@ -121,7 +122,8 @@ export default function PaywallScreen() {
     setBusy(true);
     setSwitchAccountError(null);
     try { await signOut(); }
-    catch { setSwitchAccountError('Could not switch accounts. Please try again.'); }
+    catch (cause) { setSwitchAccountError(cause instanceof UnsafeLocalCleanupError
+      ? cause.message : 'Could not switch accounts. Please try again.'); }
     finally { setBusy(false); }
   }
 
