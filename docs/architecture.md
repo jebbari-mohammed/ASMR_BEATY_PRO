@@ -1,4 +1,6 @@
-# System Architecture — AI Skin Coach (Production V1)
+# Historical AI skin-coach architecture proposal
+
+> **Status: historical proposal, not the deployed architecture.** The diagram and design principles below describe a planned scanner, coach, photo, product-graph, and affiliate system from the earlier AI concept. The October 2026 release is a routine, calendar, shelf, and reminder app on Expo SDK 57; scan, coach, private photo, and affiliate flows are disabled. Firebase email/password, server-verified RevenueCat entitlements, and account deletion are the deployed backend path. Firebase App Check service enforcement for Firestore and Storage remains pending signed physical-device QA. See [README.md](../README.md) and [security.md](security.md) for the current release.
 
 ## 1. System Overview
 

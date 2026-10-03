@@ -1,47 +1,31 @@
-# Security & Privacy Architecture (Production V1)
+# Security and privacy: current routine release
 
-## 1. Authentication & Session Security
+Checked October 3, 2026 against the source, the live Firebase deployment, and the App Check API for project `asmr-skin-coach` (project number `756603780588`). The app currently uses Firebase email/password sign-in and requires a verified email before paid access. Face scanning, AI coaching, photo journals, and affiliate offers are disabled in the deployed callable Functions and release navigation.
 
-- **Authentication Providers:** Sign in with Apple and Google (Native SDKs + Firebase Auth). Eliminates custom password handling and credential stuffing risks.
-- **Session Tokens:** Client receives short-lived Firebase ID tokens (1-hour expiry). Refresh tokens are managed securely in platform keychain (iOS Keychain / Android Keystore) via `expo-secure-store`.
-- **Sensitive Operations:** Account deletion, data purge, and subscription modifications verify authenticated UID ownership.
+## Server authorization
 
-## 2. Firebase App Check (Code Support vs Production Status)
+- `verifySubscriptionAccess` checks the Firebase caller and verified email, then queries RevenueCat's server API. Its response and the Firestore entitlement cache come from that server check, never a client-reported purchase.
+- The deployed callable Functions set `enforceAppCheck: true` for subscription verification, account deletion, and the disabled scan/coach/affiliate endpoints. Signed physical-device token behavior still needs verification before public release.
+- Firestore rules bind user data to `request.auth.uid`, require a server-written unexpired Pro entitlement for paid collections, and deny client entitlement writes. Cloud Storage rules deny private uploads and reads; only catalog art is public.
+- Account deletion uses a callable Function to remove the configured Storage prefixes, recursively delete the user document tree and legacy root records, then delete the Firebase Auth user. Direct client deletion of the parent profile is denied because Firestore does not cascade subcollections. A Firestore transaction creates `accountDeletionGuards/{uid}` **without an expiry**, marks the profile as deleting, and revokes its paid entitlement before recursive cleanup. The guard blocks stale-token profile recreation and delayed webhook writes throughout a partial failure. Only after data cleanup does the guard enter `awaiting-auth`; only after Auth confirms the user is absent does it receive an `expireAt` two hours later. Phase changes are transactional and cannot be regressed by a concurrent retry. A scheduled Function rechecks `awaiting-auth` guards if the last write fails, but never expires a guard for an existing Auth user or incomplete cleanup. Failed deletions while Auth still exists need a caller retry or support follow-up.
+- The guard's `expireAt` Firestore TTL policy is **ACTIVE**, and the scheduled finalizer's `state` + `nextCheckAt` composite index is **READY**. Its absent `expireAt` disables expiration while deletion is incomplete. [Firestore says TTL cleanup is asynchronous and typically occurs within 24 hours after expiry](https://firebase.google.com/docs/firestore/ttl). The [Cloud Scheduler](https://firebase.google.com/docs/functions/schedule-functions) API is enabled, the job is **ENABLED**, and the finalizer Function is **ACTIVE**. A manual trigger logged `finalized: 0, retained: 0, failed: 0` at 22:02 UTC on October 3, 2026. Recovery with a real pending guard and end-to-end account deletion remain unverified.
 
-- **Code Support:** FULLY IMPLEMENTED. The Scan State Machine (`ScanStateMachine`) and Cloud Functions explicitly verify incoming `X-Firebase-AppCheck` tokens via the Firebase Admin SDK before processing scans or privileged actions.
-- **Supported Providers:** Apple App Attest with DeviceCheck fallback on iOS; Google Play Integrity on Android.
-- **Production Status:** Code is complete. Production enforcement is **PENDING** console configuration (registering Apple Team ID, Bundle ID, and Google Play SHA-256 fingerprint in Firebase Console, then changing enforcement setting from Monitor to Enforce).
+## App Check: verified live configuration
 
-## 3. Storage Security & Photo Minimization
+The Android app has a registered Play Integrity configuration. The iOS app has registered App Attest and DeviceCheck configurations. Each reports a 3,600-second App Check token TTL. The mobile source initializes those providers for release builds.
 
-- **Zero Public Photo URLs:** Cloud Storage access rules (`storage.rules`) strictly deny public reads and limit access exclusively to `users/{userId}/...`.
-- **Ephemerality by Design:** Transient scan photos are uploaded to short-lived paths (`users/{uid}/scan-temp/{scanId}/`) with a 24-hour Cloud Storage Object Lifecycle management auto-deletion backup.
-- **Immediate Post-Normalization Deletion:** As soon as Gemini returns structured measurements and they are normalized into Firestore, the server invokes immediate deletion of the raw selfie files.
-- **User-Controlled Progress Photos:** Retained photos are downscaled thumbnails stored in `users/{uid}/progress/{scanId}/` only with explicit user opt-in for the 42-day comparison slider. Users can toggle or purge these anytime in Settings.
+The Firebase App Check service API currently reports **`UNENFORCED`** for Cloud Firestore, Cloud Storage, Firebase Authentication, and OAuth2. Registration and a signed build do not establish enforcement for those services. The signed TestFlight and Play internal-test builds still need physical-device token and billing checks. [Firebase's enforcement guide](https://firebase.google.com/docs/app-check/enable-enforcement) states that enabling a service rejects unverified requests and may take up to 15 minutes to apply.
 
-## 4. Deny-by-Default Firestore Security
+## Release gate
 
-- **Client Restrictions:** Clients can never write to `entitlements`, `usage`, `products`, `offers`, or `skinSnapshots`. These are mutated strictly by backend administrative workers.
-- **Per-User Isolation:** Subcollections under `users/{userId}/...` are readable and writable solely by the matching authenticated `request.auth.uid`.
+1. Prove on final signed physical iPhone and Android builds that App Attest/DeviceCheck and Play Integrity tokens reach the callable membership verifier, and that account creation, email verification, paid Firestore reads/writes, restore, and deletion work. Inspect [App Check request metrics](https://firebase.google.com/docs/app-check/monitor-metrics) for both platforms and legitimate traffic.
+2. The reviewed Functions, Firestore rules, TTL policy and index, Storage rules, and Firebase Hosting are deployed. Run an end-to-end live account deletion followed by a delayed RevenueCat test webhook; confirm no user tree or entitlement is recreated, an incomplete guard stays unexpired, a cleanup-complete guard is finalized after Auth deletion, and the active TTL policy eventually removes it. Check the scheduled Function logs during recovery.
+3. Once signed-device traffic is verified, enable App Check enforcement for Cloud Firestore and Cloud Storage in Firebase, then repeat both-device flows and monitor rejected requests. Assess Authentication and OAuth2 enforcement separately against provider requirements and sign-in flows. Record the exact live modes after rollout. Do not treat callable `enforceAppCheck` as Firestore/Storage enforcement.
 
-## 5. Cloud Secret Management
+## Secrets and operational limits
 
-- **Zero Secrets on Device:** The mobile bundle contains zero third-party API keys or service account tokens.
-- **Secret Manager:** Gemini API keys (`GEMINI_API_KEY`) and RevenueCat webhook credentials (`REVENUECAT_WEBHOOK_AUTH_TOKEN`) are stored in Google Cloud Secret Manager.
-- Cloud Functions declare dependencies via `runWith({ secrets: [...] })`, injecting credentials directly into execution memory without writing them to disk.
+RevenueCat server credentials are Firebase Function secrets (`REVENUECAT_SECRET_API_KEY`, `REVENUECAT_WEBHOOK_TOKEN`); the mobile app contains only RevenueCat's public platform keys and Firebase client configuration. The webhook authenticates its bearer token and reconciles current subscriber state with RevenueCat. The disabled scan and coach Functions explicitly declare empty secret bindings; their live Function configurations have no Gemini key attached. Keep server secrets out of the client and logs.
 
-## 6. Complete Cascading Account Deletion (GDPR / App Store Guideline 5.1.1)
+The live RevenueCat `TEST` webhook returned 401 without the configured bearer token and 200 with it. This checks endpoint authentication only; a delayed account event after deletion has not been tested. The public Firebase Hosting legal pages are live.
 
-- In-app 1-click account deletion located in Settings.
-- Executed via `deleteUserAccount` Cloud Function using Firebase Admin:
-  1. Deletes all user documents across Firestore subcollections: `skinSnapshots`, `routines`, `shelf`, `spotJournal`, `chatThreads`, `entitlements`, `usage`.
-  2. Deletes user document `users/{uid}`.
-  3. Purges all associated Cloud Storage objects under `users/{uid}/`.
-  4. Deletes the Firebase Authentication user record.
-
-## 7. Gemini AI Privacy & Data Retention Scope
-
-- **Interaction Storage Disabled:** Gemini visual inference requests specify `store: false` to disable Google Interactions API storage/state for that request.
-- **Scope & Compliance:** Gemini interaction storage is disabled (`store: false`). Additional Google/Vertex logging and abuse-monitoring controls are governed by the production project configuration and applicable Google terms.
-- **Data Minimization:** No PII (names, emails, user IDs, or location data) is passed to Gemini during skin analysis. Grounding tools (Search, Maps, external web tools) are disabled.
-- **Direct Base64 Stream:** Visual tiles and crops are sent directly as base64 byte buffers in memory, avoiding permanent Cloud Storage public URLs or unnecessary Files API retention.
+The production dependency audit still flags moderate transitive packages through `firebase-admin` 13. The repository has patch overrides for the `firebase-functions` Express/body-parser/`qs` chain; validate the deployed dependency tree before public release. Upgrade Admin and its transitive dependencies in a separate compatibility change. The old scan state machine is dormant; its unit tests do not prove production App Check, atomic quotas, or scan safety.

@@ -1,0 +1,38 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci
+      - run: npm run build --workspace=@asmr/shared
+      - run: npm test --workspace=@asmr/shared -- --runInBand
+      - name: Audit production Functions dependencies
+        run: |
+          audit_dir="$(mktemp -d)"
+          trap 'rm -rf "$audit_dir"' EXIT
+          cp packages/backend/package.json packages/backend/asmr-shared-1.0.0.tgz "$audit_dir/"
+          cd "$audit_dir"
+          npm install --omit=dev --ignore-scripts --no-audit
+          npm audit --omit=dev --audit-level=high
+      - run: npm run build --workspace=@asmr/backend
+      - run: npm test --workspace=@asmr/backend -- --runInBand
+      - run: npm install --global firebase-tools@15.14.0
+      - run: firebase emulators:exec --project demo-asmr-paid-rules --only firestore 'node packages/backend/scripts/test-paid-firestore-rules.cjs'
+      - run: npm run build --workspace=@asmr/mobile
+      - run: npm test --workspace=@asmr/mobile -- --runInBand
+      - run: npx expo-doctor
+        working-directory: packages/mobile

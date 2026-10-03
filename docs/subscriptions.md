@@ -1,90 +1,33 @@
-# Subscriptions & Monetization Architecture (Production V1)
+# Subscriptions and paid access
 
-## 1. Business & Pricing Model
+This document describes the routine, calendar, shelf, and reminder release. Photo analysis, AI coaching, and guided face exercise are not included in the current app or paywall.
 
-The AI Skin Coach operates on a high-margin subscription model paired with a hard paywall to prevent non-paying API abuse while maximizing visitor-to-subscriber conversion:
+## Products
 
-| Tier | Price | Equivalent | Badge | Initial Trial |
-| :--- | :--- | :--- | :--- | :--- |
-| **Annual (Best Value)** | **$39.99 / year** | ~$3.33 / month | `BEST VALUE` | None (Pay-First) |
-| **Monthly** | **$6.99 / month** | $6.99 / month | — | None (Pay-First) |
+The app uses a hard paywall after adult onboarding, Firebase email verification, and account sign-in. It displays the localized prices returned by the store through RevenueCat. There is no trial promised in the app. The intended US prices are $39.99 per year and $6.99 per month; the store controls the final price and territory availability.
 
-### Why Pay-First (No Mandatory Free Trial at Launch)?
-Each guided skin scan invokes Gemini 3.8 Flash with high-resolution image crops. Providing free scans before subscription exposes the backend to bot farms, sybil attacks, and unbounded marginal costs. Requiring payment before cloud execution ensures **100% positive unit contribution margin** from Day 1.
+| Store | Annual product | Monthly product |
+| --- | --- | --- |
+| Apple App Store | `skincoach_3999_1y` | `skincoach_699_1m` |
+| Google Play | `skincoach_3999_1y:annual` | `skincoach_699_1m:monthly` |
 
----
+Both products are in RevenueCat offering `default` and attached to the existing entitlement `asmr_beaty_pro_pro`. The default offering also contains a Test Store lifetime package. The mobile paywall filters its visible choices to annual and monthly. A purchase is not treated as active because a client says so: the Firebase callable queries RevenueCat's subscriber API for the authenticated Firebase UID, checks this entitlement and expiration, and writes a server-owned entitlement record. Firestore rules require that record and email verification to read or write paid records.
 
-## 2. In-App Purchase Architecture (RevenueCat SDK + Server Webhooks)
+## Purchase and restore
 
-```
-[Mobile Client (react-native-purchases)]
-        |
-        | 1. Purchases or Restores
-        v
-[Apple StoreKit 2 / Google Play Billing]
-        |
-        | 2. Receipt / Purchase Token
-        v
-[RevenueCat Backend Engine]
-        |
-        | 3. Authenticated Webhook (Authorization: Bearer <TOKEN>)
-        v
-[Cloud Function: onRevenueCatWebhook]
-        |
-        | 4. Atomically Updates Document
-        v
-[Firestore: users/{uid}/entitlements/current]
-        ^
-        | 5. Trusted Read Only
-[Scan State Machine Gate 4]
-```
+1. Firebase Auth identifies the person by UID. The app configures RevenueCat with that UID.
+2. The paywall loads current store packages and shows each store-localized price and renewal period.
+3. Apple or Google completes the payment. The app asks the server to verify the current RevenueCat entitlement before opening paid tabs.
+4. Restore asks the store for purchases, then repeats server verification. Cancellation, expiry, refund, account switch, and grace period must be tested on signed builds before launch.
+5. The RevenueCat webhook authenticates with its bearer secret and reconciles current subscriber state with RevenueCat. Webhook payloads alone are not trusted to grant Pro.
 
-### Store Product Identifiers
-- **Entitlement ID:** `pro_access`
-- **Apple App Store (iOS):**
-  - Annual: `ai.skincoach.annual_3999`
-  - Monthly: `ai.skincoach.monthly_699`
-- **Google Play Store (Android):**
-  - Annual: `ai.skincoach.annual_3999` (Base Plan: `annual-base`)
-  - Monthly: `ai.skincoach.monthly_699` (Base Plan: `monthly-base`)
+If packages cannot load, the paywall remains closed and offers retry, restore, account switching, and legal links. If the store accepts payment but server verification has not caught up, the user can restore; the app does not grant local access as a shortcut.
 
----
+## Release gates
 
-## 3. Server-Side Entitlement Enforcement
+- The first Apple subscription group and both products are still marked **Prepare for Submission** in App Store Connect. Apple requires the first group to be submitted with an app version. Annual/monthly descriptions and group localization now describe the shipped routine, calendar, shelf, and reminders; review screenshots and first-version submission remain open.
+- Google Play annual and monthly base plans are active, but closed-test purchases on a final signed Android App Bundle remain unverified.
+- Verify purchase, restore, cancellation, expiration, refund, grace period, reinstall, account switch, and displayed localized prices on both stores with the deployed backend.
+- The RevenueCat webhook destination and server secret were confirmed after deployment. Never put server secrets in the mobile bundle.
 
-Client subscription state is **strictly untrusted**. An attacker modifying client memory or React Native bundles to set `isPro = true` will fail at the backend.
-
-### 7-Gate Scan Verification Pipeline:
-1. **Firebase Authentication:** Token must be valid and unexpired.
-2. **Firebase App Check:** Device attestation (App Attest / Play Integrity) must verify legitimate binary.
-3. **Session Ownership:** Authenticated `auth.uid` must match `session.userId`.
-4. **Trusted Entitlement:** `users/{uid}/entitlements/current.isActive` must be `true` and `expiresAt` in the future.
-5. **Scan Quota:** Pro subscribers receive **1 guided skin scan every 7 days**.
-6. **Cooldown Period:** Timestamp difference between successive scans must satisfy the 7-day cooldown (configurable via Remote Config).
-7. **Idempotency:** Re-sent requests return existing cached scan results without charging or re-invoking Gemini.
-
-### Zero Marginal Cost & Failure Protection
-- If a scan fails due to network or upstream Gemini errors, **no quota is deducted**.
-- The scan status enters `FAILED_RETRYABLE`, allowing the user to retry without consuming another weekly slot.
-
----
-
-## 4. Webhook Lifecycle Management
-
-The `onRevenueCatWebhook` 2nd Gen Cloud Function listens to real-time events and updates the user's entitlement state in Firestore:
-
-- `INITIAL_PURCHASE` / `RENEWAL`: Sets `isActive: true`, updates `expiresAt`.
-- `CANCELLATION`: Sets `willRenew: false`, maintains `isActive: true` until the period ends.
-- `EXPIRATION`: Sets `isActive: false`.
-- `BILLING_ISSUE`: Sets `inGracePeriod: true` (or triggers grace period retention notification).
-- `PRODUCT_CHANGE`: Upgrades or downgrades plan tier seamlessly.
-
----
-
-## 5. Mobile Subscription Experience
-
-- **Hard Paywall Modal (`/modal/paywall`):**
-  - Compelling value-stacking: Personalized Skin Snapshot, 42-Day Consistency Program, Morning/Night adaptive routine, Spot Journal, and AI Coach.
-  - Transparent pricing with clear billing terms.
-  - 1-tap **Restore Purchases** handling for existing subscribers.
-  - Graceful "Activating your membership..." pending state if webhook propagation takes a few seconds.
+See [release-readiness.md](release-readiness.md) for the current verification record.

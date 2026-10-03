@@ -1,8 +1,10 @@
-# Security Threat Model
+# Historical AI skin-coach threat model proposal
+
+> **Status: proposed design, not a description of the current release or verified controls.** This document predates the October 2026 routine-only release and is retained as design history. The live app does not offer face scans, AI coaching, private photo uploads, or affiliate redirects. Claims below about scan quotas, file validation, per-IP limits, signed image URLs, webhook signatures/event-ID idempotency, and service-wide App Check enforcement are **not implemented release assurances**. The current security posture and remaining gates are in [security.md](security.md) and [release-checklist.md](release-checklist.md). The deployed RevenueCat webhook uses a configured bearer token and server reconciliation; Firestore, Storage, Auth, and OAuth2 App Check service enforcement remains pending signed-device QA.
 
 ## Threat Vectors & Mitigations
 
-| Threat Vector | Severity | Attack Scenario | Architectural Mitigation |
+| Threat Vector | Severity | Proposed attack scenario | Proposed mitigation (not verified for the current release) |
 | :--- | :--- | :--- | :--- |
 | **1. Stolen API Keys** | Critical | Attacker decompiles client APK / IPA to extract third-party vendor credentials. | **Zero privileged keys in client.** Perfect Corp, OpenAI, and affiliate keys are accessed solely by Cloud Functions via GCP Secret Manager. |
 | **2. Modified / Rooted Client** | High | Attacker uses rooted device or modified app to spoof scan results or bypass subscriptions. | Client is treated as untrusted. Critical checks (quotas, entitlements, image validation) are enforced server-side. App Check / Play Integrity rejects tampered clients. |
