@@ -17,6 +17,21 @@ service cloud.firestore {
     function isServerAdmin() {
       return isAuthenticated() && request.auth.token.admin == true;
     }
+
+    function isDeletionGuarded(userId) {
+      return exists(/databases/$(database)/documents/accountDeletionGuards/$(userId));
+    }
+
+    // This document is written only by the backend after a RevenueCat API check.
+    // An expiry timestamp keeps Firestore access from outliving the purchase.
+    function hasPaidAccess(userId) {
+      let entitlement = /databases/$(database)/documents/users/$(userId)/entitlements/pro;
+      return isOwner(userId)
+        && request.auth.token.email_verified == true
+        && exists(entitlement)
+        && get(entitlement).data.isPro == true
+        && (get(entitlement).data.expiresAt == null || get(entitlement).data.expiresAt > request.time);
+    }
     
     // Prevent client from setting or modifying privileged fields
     function doesNotModifyPrivilegedUserFields() {
@@ -30,7 +45,8 @@ service cloud.firestore {
         'remainingScans',
         'scanAllowanceMonthly',
         'credits',
-        'affiliateCommission'
+        'affiliateCommission',
+        'deletionStatus'
       ];
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(forbiddenFields);
     }
@@ -82,75 +98,109 @@ service cloud.firestore {
       
       // User can create their initial profile document
       allow create: if isOwner(userId)
-                    && !request.resource.data.keys().hasAny(['isPro', 'isAdmin', 'roles']);
+                    && !isDeletionGuarded(userId)
+                    && !request.resource.data.keys().hasAny(['isPro', 'isAdmin', 'roles', 'deletionStatus']);
       
       // User can update profile, but CANNOT mutate server-owned privileged fields
-      allow update: if isOwner(userId) && doesNotModifyPrivilegedUserFields();
-      allow delete: if isOwner(userId) || isServerAdmin(); // Right to Erasure
+      allow update: if isOwner(userId)
+                    && !isDeletionGuarded(userId)
+                    && doesNotModifyPrivilegedUserFields();
+      // Account deletion must run through deleteUserAccount so nested documents,
+      // storage objects, and the Auth record are removed together.
+      allow delete: if false;
       
       // 1. Skin Scan Sessions (Client can initiate session, but server writes status changes & snapshots)
       match /skinScans/{scanId} {
-        allow read: if isOwner(userId);
-        allow create: if isOwner(userId)
-                      && request.resource.data.status in ['CREATED', 'UPLOAD_PENDING']
-                      && request.resource.data.userId == userId;
+        allow read: if hasPaidAccess(userId);
+        allow create: if false;
         // Status transitions like QUEUED, COMPLETED, or setting resultSnapshotId are backend-only
         allow update: if isServerAdmin();
-        allow delete: if isOwner(userId);
+        allow delete: if hasPaidAccess(userId);
       }
       
       // 2. Skin Snapshots (READ-ONLY FOR CLIENT — WRITTEN ONLY BY TRUSTED WORKER)
       match /skinSnapshots/{snapshotId} {
-        allow read: if isOwner(userId);
+        allow read: if hasPaidAccess(userId);
         allow write: if isServerAdmin();
       }
       
       // 3. User Routines
       match /routines/{routineId} {
-        allow read, write: if isOwner(userId);
+        allow read, delete: if hasPaidAccess(userId);
+        allow create, update: if hasPaidAccess(userId)
+          && routineId == 'current'
+          && request.resource.data.keys().hasOnly(['steps', 'updatedAt'])
+          && request.resource.data.steps is list
+          && request.resource.data.steps.size() > 0
+          && request.resource.data.steps.size() <= 20
+          && request.resource.data.updatedAt is int;
       }
       
       // 4. Daily Routine Logs (Check-ins, streaks)
       match /routineLogs/{logId} {
-        allow read, create, update: if isOwner(userId);
-        allow delete: if isOwner(userId);
+        allow read, delete: if hasPaidAccess(userId);
+        allow create, update: if hasPaidAccess(userId)
+          && logId.matches('^\\d{4}-\\d{2}-\\d{2}$')
+          && request.resource.data.keys().hasOnly(['day', 'completedIds', 'updatedAt'])
+          && request.resource.data.keys().hasAll(['day', 'completedIds', 'updatedAt'])
+          && request.resource.data.day == logId
+          && request.resource.data.completedIds is list
+          && request.resource.data.completedIds.size() <= 20
+          && request.resource.data.updatedAt is int;
       }
       
       // 5. My Shelf (Owned products)
       match /shelf/{shelfItemId} {
-        allow read, write: if isOwner(userId);
+        allow read, delete: if hasPaidAccess(userId);
+        allow create, update: if hasPaidAccess(userId)
+          && shelfItemId.matches('^[A-Za-z0-9]{8,40}$')
+          && request.resource.data.keys().hasOnly(['id', 'brand', 'name', 'category', 'openedOn', 'addedAt'])
+          && request.resource.data.keys().hasAll(['id', 'brand', 'name', 'category', 'openedOn', 'addedAt'])
+          && request.resource.data.id == shelfItemId
+          && request.resource.data.brand is string
+          && request.resource.data.brand.size() <= 80
+          && request.resource.data.name is string
+          && request.resource.data.name.size() >= 2
+          && request.resource.data.name.size() <= 100
+          && request.resource.data.category in ['Cleanser', 'Moisturizer', 'Sunscreen', 'Treatment', 'Other']
+          && (request.resource.data.openedOn == null ||
+              (request.resource.data.openedOn is string && request.resource.data.openedOn.matches('^\\d{4}-\\d{2}-\\d{2}$')))
+          && request.resource.data.addedAt is int;
       }
       
       // 6. AI Skin Coach Conversations
       match /conversations/{conversationId} {
-        allow read, write: if isOwner(userId);
+        allow read: if hasPaidAccess(userId);
+        allow write: if false;
         
         match /messages/{messageId} {
-          allow read: if isOwner(userId);
+          allow read: if hasPaidAccess(userId);
           // User can send messages; coach replies are appended by backend function
-          allow create: if isOwner(userId) && request.resource.data.sender == 'user';
-          allow update, delete: if isOwner(userId) || isServerAdmin();
+          allow create: if false;
+          allow update, delete: if false;
         }
       }
       
       // 7. Spot Journal (Visual appearance tracking)
       match /spotJournals/{journalId} {
-        allow read, write: if isOwner(userId);
+        allow read: if hasPaidAccess(userId);
+        allow write: if false;
         
         match /entries/{entryId} {
-          allow read, write: if isOwner(userId);
+          allow read: if hasPaidAccess(userId);
+          allow write: if false;
         }
       }
       
       // 8. Progress Entries
       match /progressEntries/{entryId} {
-        allow read: if isOwner(userId);
-        allow write: if isServerAdmin() || isOwner(userId);
+        allow read: if hasPaidAccess(userId);
+        allow write: if false;
       }
       
       // 9. Recommendations Audit (Audit history for "Why this product?")
       match /recommendations/{recommendationId} {
-        allow read: if isOwner(userId);
+        allow read: if hasPaidAccess(userId);
         allow write: if isServerAdmin();
       }
     }

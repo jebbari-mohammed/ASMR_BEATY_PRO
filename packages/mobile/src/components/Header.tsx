@@ -27,16 +27,8 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, showBack = fals
           <View>
             <View style={styles.logoRow}>
               <Text style={styles.brandTitle}>ASMR BEAUTY</Text>
-              <TouchableOpacity
-                style={styles.proBadge}
-                activeOpacity={0.8}
-                onPress={() => router.push('/modal/paywall')}
-                accessibilityLabel="Open Pro Access Paywall"
-              >
-                <Text style={styles.proText}>PRO</Text>
-              </TouchableOpacity>
             </View>
-            <Text style={styles.tagline}>INTELLIGENT SKIN COACH</Text>
+            <Text style={styles.tagline}>YOUR SKINCARE JOURNAL</Text>
           </View>
         </View>
 
@@ -44,21 +36,10 @@ export const Header: React.FC<HeaderProps> = ({ title, subtitle, showBack = fals
           <TouchableOpacity
             style={styles.actionButton}
             activeOpacity={0.8}
-            onPress={() => router.push('/modal/spot-journal')}
-          >
-            <Ionicons name="camera-outline" size={18} color={colors.primary} />
-            <View style={styles.badgeDot} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.avatarRing}
-            activeOpacity={0.8}
             onPress={() => router.push('/modal/settings')}
             accessibilityLabel="Open Settings and Privacy"
           >
-            <View style={styles.avatarInner}>
-              <Text style={styles.avatarText}>S</Text>
-            </View>
+            <Ionicons name="settings-outline" size={20} color={colors.primary} />
           </TouchableOpacity>
         </View>
       </View>
@@ -103,19 +84,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     color: colors.primary
   },
-  proBadge: {
-    backgroundColor: colors.gold,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: radii.xs,
-    marginLeft: 6
-  },
-  proText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.textInverse,
-    letterSpacing: 0.8
-  },
   tagline: {
     fontSize: 9,
     fontWeight: '600',
@@ -134,40 +102,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.sm,
     ...shadows.subtle,
     borderWidth: 1,
     borderColor: colors.borderLight
-  },
-  badgeDot: {
-    position: 'absolute',
-    top: 6,
-    right: 7,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.terracotta
-  },
-  avatarRing: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.full,
-    padding: 2,
-    backgroundColor: colors.goldLight,
-    borderWidth: 1.5,
-    borderColor: colors.gold
-  },
-  avatarInner: {
-    flex: 1,
-    borderRadius: radii.full,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  avatarText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textInverse
   },
   titleContainer: {
     marginTop: spacing.sm

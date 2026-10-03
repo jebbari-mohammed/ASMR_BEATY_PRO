@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,11 @@ import {
   TouchableOpacity,
   Switch,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Linking,
+  Platform
 } from 'react-native';
+import Purchases from 'react-native-purchases';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,65 +19,159 @@ import { colors, spacing, typography, radii, shadows } from '../../src/theme/tok
 import { Card } from '../../src/components/Card';
 import { SubscriptionService } from '../../src/services/subscription-service';
 import { OnboardingService } from '../../src/services/onboarding-machine';
+import * as SecureStore from 'expo-secure-store';
+import functions from '@react-native-firebase/functions';
+import { useAccess } from '../../src/services/access-context';
+import auth from '@react-native-firebase/auth';
+import { ReminderService, ReminderPreferences, ReminderTime } from '../../src/services/reminder-service';
 
 export default function SettingsModal() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { state, email, refresh, signOut } = useAccess();
 
-  const [saveProgressPhotos, setSaveProgressPhotos] = useState(true);
-  const [dailyReminders, setDailyReminders] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [reminders, setReminders] = useState<ReminderPreferences | null>(null);
+  const [reminderOwnerUid, setReminderOwnerUid] = useState<string | null>(null);
+  const [reminderBusy, setReminderBusy] = useState(false);
+  const currentUid = auth().currentUser?.uid ?? null;
+  const currentReminders = currentUid && reminderOwnerUid === currentUid ? reminders : null;
+
+  useEffect(() => {
+    let active = true;
+    setReminders(null);
+    setReminderOwnerUid(null);
+    if (currentUid) ReminderService.get(currentUid).then(preferences => {
+      if (active && auth().currentUser?.uid === currentUid) {
+        setReminders(preferences);
+        setReminderOwnerUid(currentUid);
+      }
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [currentUid]);
+
+  const updateReminders = async (enabled: boolean, morning?: ReminderTime, evening?: ReminderTime) => {
+    const uid = currentUid;
+    if (!uid) return;
+    setReminderBusy(true);
+    try {
+      const next = await ReminderService.configure(uid, enabled, morning, evening);
+      if (auth().currentUser?.uid === uid) {
+        setReminders(next);
+        setReminderOwnerUid(uid);
+      }
+    } catch (cause) {
+      Alert.alert('Could not set reminders', cause instanceof Error ? cause.message : 'Please try again.');
+    } finally {
+      setReminderBusy(false);
+    }
+  };
+
+  const chooseTime = (period: 'morning' | 'evening') => {
+    if (!currentReminders) return;
+    const hours = period === 'morning' ? [7, 8, 9, 10] : [19, 20, 21, 22];
+    Alert.alert(`${period === 'morning' ? 'Morning' : 'Evening'} reminder`, 'Choose a time on this device.', [
+      ...hours.map(hour => ({
+        text: `${hour % 12 || 12}:00 ${hour < 12 ? 'AM' : 'PM'}`,
+        onPress: () => updateReminders(currentReminders.enabled,
+          period === 'morning' ? { hour, minute: 0 } : currentReminders.morning,
+          period === 'evening' ? { hour, minute: 0 } : currentReminders.evening)
+      })),
+      { text: 'Cancel', style: 'cancel' as const }
+    ]);
+  };
 
   const handleRestore = async () => {
     setIsRestoring(true);
     try {
-      const isEntitled = await SubscriptionService.verifyEntitlementServerSide('current_user');
+      const isEntitled = await SubscriptionService.restorePurchases();
+      await refresh();
       setIsRestoring(false);
       if (isEntitled) {
-        Alert.alert('Purchases Restored', 'Your Pro subscription has been verified.');
+        Alert.alert('Membership restored', 'Your active subscription has been verified.');
       } else {
         Alert.alert('Restore Purchases', 'No active subscription found for this Apple ID / Google Play account.');
       }
     } catch {
       setIsRestoring(false);
-      Alert.alert('Restore Error', 'Could not reach store servers. Please verify your internet connection.');
+      Alert.alert('Restore unavailable', 'Check that this device has access to the App Store or Google Play and try again.');
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await signOut();
+      router.replace('/account');
+    } catch {
+      Alert.alert('Could not sign out', 'Please try again.');
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  const handleManageMembership = async () => {
+    if (state !== 'subscribed') {
+      router.push('/modal/paywall');
+      return;
+    }
+    try {
+      if (Platform.OS === 'ios') {
+        await Purchases.showManageSubscriptions();
+      } else {
+        const customer = await Purchases.getCustomerInfo();
+        if (!customer.managementURL) throw new Error('No store management link is available.');
+        await Linking.openURL(customer.managementURL);
+      }
+    } catch {
+      Alert.alert('Manage in your store', 'Open your App Store or Google Play subscription settings to change or cancel this membership.');
     }
   };
 
   const handleDeleteAccount = () => {
-    Alert.alert(
-      'Delete Account & All Data?',
-      'This will permanently delete your profile, skin photographs, scan measurements, routine history, and conversation memory. This action is irreversible according to GDPR and App Store standards.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete Everything',
-          style: 'destructive',
-          onPress: async () => {
-            setIsDeleting(true);
-            try {
-              // Simulate / call backend erasure
-              await OnboardingService.reset();
-              setIsDeleting(false);
-              Alert.alert(
-                'Account Deleted',
-                'Your skin records, photos, and personal data have been completely deleted from our servers.',
-                [
-                  {
-                    text: 'Done',
-                    onPress: () => router.replace('/onboarding')
-                  }
-                ]
-              );
-            } catch (err: any) {
-              setIsDeleting(false);
-              Alert.alert('Error', err?.message || 'Failed to complete deletion.');
-            }
+    Alert.alert('Delete your account?', 'This permanently removes your app account and routine records. Cancel any active subscription separately in App Store or Google Play settings.', [
+      { text: 'Keep account', style: 'cancel' },
+      { text: 'Delete account', style: 'destructive', onPress: async () => {
+        setIsDeleting(true);
+        try {
+          await functions().httpsCallable('deleteUserAccount')();
+          await OnboardingService.reset().catch(() => undefined);
+          await signOut().catch(() => auth().signOut());
+          router.replace('/onboarding');
+        } catch {
+          Alert.alert('Deletion could not finish', 'Your account may still be active. Please retry or contact support.');
+        } finally { setIsDeleting(false); }
+      } }
+    ]);
+  };
+
+  const handleClearLocalData = () => {
+    Alert.alert('Clear data on this device?', 'This removes onboarding answers and legacy routine checkoffs saved on this device.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Clear device data', style: 'destructive', onPress: async () => {
+          setIsDeleting(true);
+          try {
+            const raw = await SecureStore.getItemAsync('asmr_routine_days_v1');
+            const days: string[] = raw ? JSON.parse(raw) : [];
+            await Promise.all(days.map(day => SecureStore.deleteItemAsync(`asmr_daily_routine_${day}`)));
+            await SecureStore.deleteItemAsync('asmr_routine_days_v1');
+            await SecureStore.deleteItemAsync('asmr_latest_skin_scan_v1');
+            await OnboardingService.reset();
+            Alert.alert('Device data cleared', 'Local onboarding answers and legacy checkoffs were removed. Your cloud routine record remains.', [
+              { text: 'Done', onPress: () => router.replace('/onboarding') }
+            ]);
+          } catch (error) {
+            Alert.alert('Could not clear data', 'Please try again.');
+          } finally {
+            setIsDeleting(false);
           }
         }
-      ]
-    );
+      }
+    ]);
   };
 
   return (
@@ -108,14 +205,14 @@ export default function SettingsModal() {
               <Ionicons name="sparkles" size={18} color={colors.goldDark} />
             </View>
             <View style={styles.membershipInfo}>
-              <Text style={styles.membershipTier}>ASMR Beauty Pro Member</Text>
-              <Text style={styles.membershipSub}>Annual Plan • Renews Aug 21, 2027</Text>
+              <Text style={styles.membershipTier}>{state === 'subscribed' ? 'Active membership' : 'Membership required'}</Text>
+              <Text style={styles.membershipSub}>{email ?? 'Sign in to manage access'}</Text>
             </View>
             <TouchableOpacity
               style={styles.manageBtn}
-              onPress={() => router.push('/modal/paywall')}
+              onPress={handleManageMembership}
             >
-              <Text style={styles.manageBtnText}>Change</Text>
+              <Text style={styles.manageBtnText}>{state === 'subscribed' ? 'Manage' : 'Join'}</Text>
             </TouchableOpacity>
           </View>
 
@@ -135,22 +232,23 @@ export default function SettingsModal() {
           </TouchableOpacity>
         </Card>
 
-        {/* Photo Privacy Section */}
+        {/* Local daily reminders */}
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Photo Privacy & Data Minimization</Text>
+          <Text style={styles.sectionTitle}>Daily routine reminders</Text>
         </View>
 
         <Card variant="elevated" style={styles.settingCard}>
           <View style={styles.toggleRow}>
             <View style={styles.toggleTextWrap}>
-              <Text style={styles.toggleTitle}>Save Progress Photos</Text>
+              <Text style={styles.toggleTitle}>Morning and evening</Text>
               <Text style={styles.toggleDesc}>
-                Store photos encrypted so you can visually track Day 1 vs Day 14, 30, and 42 changes. If turned off, transient photos are deleted immediately after analysis.
+                Two quiet reminders each day, scheduled only on this device.
               </Text>
             </View>
             <Switch
-              value={saveProgressPhotos}
-              onValueChange={setSaveProgressPhotos}
+              value={currentReminders?.enabled === true}
+              disabled={!currentReminders || reminderBusy}
+              onValueChange={enabled => updateReminders(enabled)}
               trackColor={{ false: colors.borderSubtle, true: colors.primary }}
               thumbColor={colors.surface}
             />
@@ -158,20 +256,17 @@ export default function SettingsModal() {
 
           <View style={styles.divider} />
 
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleTextWrap}>
-              <Text style={styles.toggleTitle}>Morning & Evening Reminders</Text>
-              <Text style={styles.toggleDesc}>
-                Gentle daily prompts to maintain your 42-day skin consistency habit.
-              </Text>
-            </View>
-            <Switch
-              value={dailyReminders}
-              onValueChange={setDailyReminders}
-              trackColor={{ false: colors.borderSubtle, true: colors.primary }}
-              thumbColor={colors.surface}
-            />
-          </View>
+          <TouchableOpacity style={styles.actionRow} disabled={!currentReminders || reminderBusy} onPress={() => chooseTime('morning')}>
+            <Ionicons name="sunny-outline" size={18} color={colors.primary} />
+            <Text style={styles.actionRowText}>Morning · {currentReminders ? `${currentReminders.morning.hour % 12 || 12}:00 AM` : '8:00 AM'}</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+          <View style={styles.divider} />
+          <TouchableOpacity style={styles.actionRow} disabled={!currentReminders || reminderBusy} onPress={() => chooseTime('evening')}>
+            <Ionicons name="moon-outline" size={18} color={colors.primary} />
+            <Text style={styles.actionRowText}>Evening · {currentReminders ? `${currentReminders.evening.hour % 12 || 12}:00 PM` : '9:00 PM'}</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
         </Card>
 
         {/* Affiliate Disclosure & Transparency */}
@@ -185,7 +280,7 @@ export default function SettingsModal() {
             <Text style={styles.disclosureTitle}>AFFILIATE DISCLOSURE</Text>
           </View>
           <Text style={styles.disclosureText}>
-            We may earn an affiliate commission when you purchase verified skincare products through links in the app. Commission rates never influence routine recommendations — compatibility, safety rules, and your skin profile always come first.
+            The current routine app does not include affiliate product links. If shopping links are added later, any commission will be disclosed beside them.
           </Text>
         </Card>
 
@@ -212,7 +307,7 @@ export default function SettingsModal() {
         <Card variant="elevated" style={styles.settingCard}>
           <TouchableOpacity
             style={styles.actionRow}
-            onPress={() => Alert.alert('Privacy Policy', 'Your photographs and personal data are strictly processed under end-to-end encryption. Raw selfies are never used to train public AI models.')}
+            onPress={() => router.push('/legal/privacy')}
           >
             <Ionicons name="lock-closed-outline" size={18} color={colors.primary} />
             <Text style={styles.actionRowText}>Privacy Policy</Text>
@@ -223,10 +318,20 @@ export default function SettingsModal() {
 
           <TouchableOpacity
             style={styles.actionRow}
-            onPress={() => Alert.alert('Terms of Service', 'ASMR Beauty Pro provides personalized cosmetic skincare recommendations and tracking under standard App Store subscription terms.')}
+            onPress={() => router.push('/legal/terms')}
           >
             <Ionicons name="document-text-outline" size={18} color={colors.primary} />
             <Text style={styles.actionRowText}>Terms of Service</Text>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+          <View style={styles.divider} />
+          <TouchableOpacity style={styles.actionRow} onPress={() => {
+            void Linking.openURL('mailto:jabbarimed2020@gmail.com').catch(() => {
+              Alert.alert('Support email', 'Contact us at jabbarimed2020@gmail.com from any email app.');
+            });
+          }}>
+            <Ionicons name="mail-outline" size={18} color={colors.primary} />
+            <Text style={styles.actionRowText}>Contact support</Text>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
         </Card>
@@ -240,7 +345,7 @@ export default function SettingsModal() {
           <TouchableOpacity
             style={styles.deleteRow}
             activeOpacity={0.8}
-            onPress={handleDeleteAccount}
+            onPress={handleClearLocalData}
             disabled={isDeleting}
           >
             {isDeleting ? (
@@ -249,11 +354,20 @@ export default function SettingsModal() {
               <Ionicons name="trash-outline" size={20} color={colors.terracotta} style={{ marginRight: 8 }} />
             )}
             <View style={{ flex: 1 }}>
-              <Text style={styles.deleteTitle}>Delete Account & Data</Text>
+              <Text style={styles.deleteTitle}>Clear data on this device</Text>
               <Text style={styles.deleteDesc}>
-                Permanently purge all scan records, selfies, and profile history.
+                Remove onboarding answers saved on this device. Your account and cloud routine record remain available.
               </Text>
             </View>
+          </TouchableOpacity>
+          <View style={styles.divider} />
+          <TouchableOpacity style={styles.deleteRow} onPress={handleDeleteAccount} disabled={isDeleting}>
+            <Ionicons name="person-remove-outline" size={20} color={colors.terracotta} style={{ marginRight: 8 }} />
+            <View style={{ flex: 1 }}><Text style={styles.deleteTitle}>Delete account and cloud data</Text><Text style={styles.deleteDesc}>Permanently erase this app account and its saved routine history.</Text></View>
+          </TouchableOpacity>
+          <View style={styles.divider} />
+          <TouchableOpacity style={styles.actionRow} disabled={isSigningOut} onPress={handleSignOut}>
+            <Ionicons name="log-out-outline" size={18} color={colors.primary} /><Text style={styles.actionRowText}>Sign out</Text>
           </TouchableOpacity>
         </Card>
 

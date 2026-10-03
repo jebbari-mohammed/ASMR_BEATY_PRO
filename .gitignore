@@ -11,6 +11,23 @@ dist/
 build/
 .expo/
 web-build/
+packages/mobile/android/
+packages/mobile/ios/
+dist-apk/
+dist-aab/
+dist-ios/
+dist-screenshots/
+dist-debug/
+*.apk
+*.aab
+*.ipa
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+credentials.json
+.qa-simulator.json
+.qa-appcheck-*.json
 
 # Firebase & GCP
 .firebase/

@@ -1,439 +1,115 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, Alert, ImageBackground, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
-import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
-import { Card } from '../../src/components/Card';
-import { Button } from '../../src/components/Button';
-import { DisclaimerBar } from '../../src/components/DisclaimerBar';
+import { localImages } from '../../src/theme/images';
+import { colors } from '../../src/theme/tokens';
+import { ShelfCategory, ShelfItem, ShelfService } from '../../src/services/shelf-service';
 
-interface OwnedProduct {
-  id: string;
-  brand: string;
-  name: string;
-  category: string;
-  dateStarted: string;
-  daysActive: number;
-  actives: string;
-  image: any;
-  feedback: 'loved' | 'works_well' | 'neutral' | 'irritating';
-}
+const categories: ShelfCategory[] = ['Cleanser', 'Moisturizer', 'Sunscreen', 'Treatment', 'Other'];
+const icons: Record<ShelfCategory, keyof typeof Ionicons.glyphMap> = {
+  Cleanser: 'water-outline', Moisturizer: 'leaf-outline', Sunscreen: 'sunny-outline', Treatment: 'flask-outline', Other: 'cube-outline'
+};
 
 export default function ShelfScreen() {
-  const [shelfItems] = useState<OwnedProduct[]>([
-    {
-      id: 'p1',
-      brand: 'AURA',
-      name: 'Honey Botanical Soothing Serum',
-      category: 'Treatment',
-      dateStarted: 'Aug 21, 2026',
-      daysActive: 14,
-      actives: 'Propolis 83% • Royal Jelly',
-      image: localImages.serumBottle,
-      feedback: 'loved'
-    },
-    {
-      id: 'p2',
-      brand: 'KŌR',
-      name: 'Barrier Recovery Cream',
-      category: 'Moisturizer',
-      dateStarted: 'Aug 21, 2026',
-      daysActive: 14,
-      actives: 'Ceramides NP/AP/EOP • Squalane',
-      image: localImages.creamBottle,
-      feedback: 'loved'
-    }
-  ]);
+  const [items, setItems] = useState<ShelfItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [brand, setBrand] = useState('');
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState<ShelfCategory>('Moisturizer');
+  const [openedOn, setOpenedOn] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const [showWhyModal, setShowWhyModal] = useState<boolean>(false);
+  const load = useCallback(async () => {
+    try { setItems(await ShelfService.list()); setError(false); }
+    catch { setError(true); }
+    finally { setLoading(false); }
+  }, []);
 
-  return (
-    <View style={styles.screen}>
-      <Header />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header Section */}
-        <View style={styles.headerSection}>
-          <Text style={typography.eyebrow}>PRODUCT INVENTORY & MEMORY</Text>
-          <Text style={styles.title}>My Shelf</Text>
-          <Text style={styles.subtitle}>
-            Catalog formulas you own, track when you opened them, and observe how your barrier tolerates each active.
-          </Text>
-        </View>
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-        {/* Action Buttons: Barcode & OCR */}
-        <View style={styles.actionRow}>
-          <Button
-            title="Scan Barcode"
-            variant="primary"
-            icon={<Ionicons name="barcode-outline" size={18} color={colors.textInverse} />}
-            onPress={() => alert('Launching barcode scanner...')}
-            style={{ flex: 1, marginRight: spacing.sm }}
-          />
-          <Button
-            title="Label OCR Photo"
-            variant="secondary"
-            icon={<Ionicons name="camera-outline" size={18} color={colors.primary} />}
-            onPress={() => alert('Launching bottle label OCR camera...')}
-            style={{ flex: 1 }}
-          />
-        </View>
+  async function save() {
+    setSaving(true);
+    try {
+      const input = { brand, name, category, openedOn: openedOn.trim() || null };
+      if (editingId) {
+        await ShelfService.update(editingId, input);
+        setItems(current => current.map(item => item.id === editingId ? { ...item, ...input, name: name.trim(), brand: brand.trim() } : item));
+      } else {
+        const item = await ShelfService.add(input);
+        setItems((current) => [item, ...current]);
+      }
+      setShowForm(false); setEditingId(null); setBrand(''); setName(''); setOpenedOn('');
+    } catch (cause) { Alert.alert('Could not save product', cause instanceof Error ? cause.message : 'Please try again.'); }
+    finally { setSaving(false); }
+  }
 
-        {/* Owned Products */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Currently In Routine ({shelfItems.length})</Text>
-          <Text style={styles.sectionMeta}>Verified Formulas</Text>
-        </View>
+  function openEdit(item: ShelfItem) {
+    setEditingId(item.id); setBrand(item.brand); setName(item.name); setCategory(item.category); setOpenedOn(item.openedOn ?? ''); setShowForm(true);
+  }
 
-        {shelfItems.map(item => (
-          <Card key={item.id} variant="elevated" style={styles.productCard}>
-            <View style={styles.productRow}>
-              <View style={styles.productImgWrap}>
-                <Image source={item.image} style={styles.productThumb} resizeMode="cover" />
-              </View>
+  function openAdd() {
+    setEditingId(null); setBrand(''); setName(''); setCategory('Moisturizer'); setOpenedOn(''); setShowForm(true);
+  }
 
-              <View style={styles.productInfo}>
-                <View style={styles.brandRow}>
-                  <Text style={styles.brandText}>{item.brand.toUpperCase()}</Text>
-                  <View style={[styles.feedbackBadge, item.feedback === 'loved' ? styles.feedbackLoved : styles.feedbackGood]}>
-                    <Ionicons
-                      name={item.feedback === 'loved' ? 'star' : 'checkmark-circle'}
-                      size={11}
-                      color={item.feedback === 'loved' ? colors.goldDark : colors.routineDone}
-                    />
-                    <Text style={[styles.feedbackText, item.feedback === 'loved' ? styles.feedbackTextLoved : styles.feedbackTextGood]}>
-                      {item.feedback === 'loved' ? 'Loved' : 'Works Well'}
-                    </Text>
-                  </View>
-                </View>
+  function confirmRemove(item: ShelfItem) {
+    Alert.alert('Remove from shelf?', `Remove ${item.name} from your account?`, [
+      { text: 'Keep', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: async () => {
+        try { await ShelfService.remove(item.id); setItems((current) => current.filter((entry) => entry.id !== item.id)); }
+        catch { Alert.alert('Could not remove product', 'Please try again.'); }
+      } }
+    ]);
+  }
 
-                <Text style={styles.productName}>{item.name}</Text>
-                <Text style={styles.activeFormulaText}>{item.actives}</Text>
-                <Text style={styles.productMeta}>
-                  {item.category} • Started {item.dateStarted} ({item.daysActive}d active)
-                </Text>
-              </View>
-            </View>
-          </Card>
-        ))}
-
-        {/* Vetted Recommendation Card with Real Product Packshot */}
-        <View style={[styles.sectionHeaderRow, { marginTop: spacing.xl }]}>
-          <Text style={styles.sectionTitle}>Coach Recommendation</Text>
-          <Text style={styles.sectionMeta}>Vetted by SafetyEngine</Text>
-        </View>
-
-        <Card variant="elevated" style={styles.recCard}>
-          <LinearGradient
-            colors={gradients.champagneGlow}
-            style={styles.recGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.recTopRow}>
-              <View style={styles.recPill}>
-                <Ionicons name="sparkles" size={12} color={colors.goldDark} />
-                <Text style={styles.recPillText}>98% COMPATIBILITY MATCH</Text>
-              </View>
-              <Text style={styles.priceText}>$18.00</Text>
-            </View>
-
-            <View style={styles.recProductRow}>
-              <Image source={localImages.serumBottle} style={styles.recProductThumb} />
-
-              <View style={styles.recProductDetails}>
-                <Text style={styles.recBrand}>AURA BOTANICALS</Text>
-                <Text style={styles.recTitle}>Nourishing Honey Calming Serum</Text>
-                <Text style={styles.recDesc}>
-                  Targeted barrier soothing for visible mid-cheek redness without conflicting with your evening routine.
-                </Text>
-              </View>
-            </View>
-
-            {/* Why This Fits Transparency Pill */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setShowWhyModal(!showWhyModal)}
-              style={styles.whyButton}
-            >
-              <Ionicons name="information-circle" size={16} color={colors.primary} />
-              <Text style={styles.whyButtonText}>Why This Product? (Safety Breakdown)</Text>
-              <Ionicons name={showWhyModal ? 'chevron-up' : 'chevron-down'} size={14} color={colors.primary} />
-            </TouchableOpacity>
-
-            {showWhyModal && (
-              <View style={styles.whyBox}>
-                <View style={styles.whyItem}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.routineDone} />
-                  <Text style={styles.whyItemText}>Zero conflicting actives with your current cleanser & SPF</Text>
-                </View>
-                <View style={styles.whyItem}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.routineDone} />
-                  <Text style={styles.whyItemText}>Alcohol-free & fragrance-free formulation</Text>
-                </View>
-                <View style={styles.whyItem}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.routineDone} />
-                  <Text style={styles.whyItemText}>Available for direct dispatch via authorized partner</Text>
-                </View>
-              </View>
-            )}
-
-            <Button
-              title="View at Authorized Retailer (iHerb)"
-              variant="luxury"
-              icon={<Ionicons name="open-outline" size={16} color={colors.surfaceTwilight} />}
-              onPress={() => alert('Opening verified partner store...')}
-              style={{ marginTop: spacing.md }}
-            />
-          </LinearGradient>
-        </Card>
-
-        <DisclaimerBar showAffiliate={true} />
-      </ScrollView>
-    </View>
-  );
+  return <View style={styles.screen}>
+    <Header />
+    <ScrollView contentContainerStyle={styles.content}>
+      <ImageBackground source={localImages.editorialRoutine} style={styles.hero} imageStyle={{ borderRadius: 20 }}>
+        <View style={styles.heroShade}><Text style={styles.heroEyebrow}>YOUR PERSONAL INVENTORY</Text><Text style={styles.heroTitle}>A place for what you use.</Text></View>
+      </ImageBackground>
+      <Text style={styles.subtitle}>Keep a simple record of your own products. Details here are entered by you; this shelf does not rate ingredients or recommend products.</Text>
+      <Pressable onPress={openAdd} style={styles.addButton}><Ionicons name="add" size={21} color="white" /><Text style={styles.addText}>Add a product</Text></Pressable>
+      <Text style={styles.section}>MY PRODUCTS  ·  {items.length}</Text>
+      {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 28 }} /> : error ? <View style={styles.empty}><Text style={styles.emptyTitle}>Could not load your shelf</Text><Pressable onPress={load}><Text style={styles.link}>Try again</Text></Pressable></View> : items.length === 0 ? <View style={styles.empty}><Ionicons name="cube-outline" size={29} color={colors.goldDark} /><Text style={styles.emptyTitle}>Start with one product</Text><Text style={styles.emptyCopy}>Add a cleanser, moisturizer, sunscreen, or any product you already use.</Text></View> : items.map((item) => <View key={item.id} style={styles.card}>
+        <View style={styles.productIcon}><Ionicons name={icons[item.category] as any} size={23} color={colors.primary} /></View>
+        <View style={{ flex: 1 }}><Text style={styles.category}>{item.category.toUpperCase()}</Text><Text style={styles.name}>{item.name}</Text>{!!item.brand && <Text style={styles.brand}>{item.brand}</Text>}{item.openedOn && <Text style={styles.opened}>Opened {item.openedOn}</Text>}</View>
+        <Pressable accessibilityLabel={`Edit ${item.name}`} onPress={() => openEdit(item)} style={styles.delete}><Ionicons name="create-outline" size={19} color={colors.primary} /></Pressable>
+        <Pressable accessibilityLabel={`Remove ${item.name}`} onPress={() => confirmRemove(item)} style={styles.delete}><Ionicons name="trash-outline" size={18} color={colors.textTertiary} /></Pressable>
+      </View>)}
+    </ScrollView>
+    <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
+      <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView style={styles.sheet} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+        <View style={styles.sheetTop}><Text style={styles.sheetTitle}>{editingId ? 'Edit product' : 'Add a product'}</Text><Pressable onPress={() => setShowForm(false)}><Ionicons name="close" size={22} color={colors.primary} /></Pressable></View>
+        <Text style={styles.fieldLabel}>PRODUCT NAME</Text><TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Gentle cleanser" maxLength={100} />
+        <Text style={styles.fieldLabel}>BRAND  ·  OPTIONAL</Text><TextInput style={styles.input} value={brand} onChangeText={setBrand} placeholder="Brand name" maxLength={80} />
+        <Text style={styles.fieldLabel}>CATEGORY</Text><View style={styles.chips}>{categories.map((value) => <Pressable key={value} onPress={() => setCategory(value)} style={[styles.chip, category === value && styles.chipSelected]}><Text style={[styles.chipText, category === value && styles.chipTextSelected]}>{value}</Text></Pressable>)}</View>
+        <Text style={styles.fieldLabel}>OPENED ON  ·  OPTIONAL</Text><TextInput style={styles.input} value={openedOn} onChangeText={setOpenedOn} placeholder="YYYY-MM-DD" autoCapitalize="none" />
+        <Pressable disabled={saving} onPress={save} style={[styles.addButton, saving && { opacity: 0.6 }]}>{saving ? <ActivityIndicator color="white" /> : <Text style={styles.addText}>{editingId ? 'Save changes' : 'Save to my shelf'}</Text>}</Pressable>
+      </ScrollView></KeyboardAvoidingView>
+    </Modal>
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  container: {
-    flex: 1
-  },
-  content: {
-    paddingHorizontal: spacing.base,
-    paddingBottom: spacing.huge
-  },
-  headerSection: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.md
-  },
-  title: {
-    ...typography.display,
-    fontSize: 28,
-    lineHeight: 34,
-    marginTop: spacing.xxs,
-    marginBottom: spacing.xs
-  },
-  subtitle: {
-    ...typography.body,
-    fontSize: 14,
-    lineHeight: 20
-  },
-  actionRow: {
-    flexDirection: 'row',
-    marginBottom: spacing.lg
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm
-  },
-  sectionTitle: {
-    ...typography.title2,
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  sectionMeta: {
-    ...typography.caption,
-    fontSize: 12,
-    color: colors.textTertiary
-  },
-  productCard: {
-    marginBottom: spacing.sm,
-    padding: spacing.sm + 4
-  },
-  productRow: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  productImgWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: radii.md,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(26, 56, 43, 0.08)',
-    backgroundColor: colors.surfaceSubtle,
-    marginRight: spacing.md
-  },
-  productThumb: {
-    width: '100%',
-    height: '100%'
-  },
-  productInfo: {
-    flex: 1
-  },
-  brandRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2
-  },
-  brandText: {
-    ...typography.eyebrow,
-    fontSize: 10,
-    color: colors.goldDark,
-    letterSpacing: 0.8
-  },
-  feedbackBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radii.full
-  },
-  feedbackLoved: {
-    backgroundColor: 'rgba(197, 154, 111, 0.15)'
-  },
-  feedbackGood: {
-    backgroundColor: 'rgba(74, 124, 89, 0.1)'
-  },
-  feedbackText: {
-    ...typography.captionBold,
-    fontSize: 10,
-    marginLeft: 3
-  },
-  feedbackTextLoved: {
-    color: colors.goldDark
-  },
-  feedbackTextGood: {
-    color: colors.routineDone
-  },
-  productName: {
-    ...typography.title2,
-    fontSize: 15,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 2
-  },
-  activeFormulaText: {
-    ...typography.captionBold,
-    fontSize: 11,
-    color: colors.primary,
-    marginBottom: 2
-  },
-  productMeta: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textTertiary
-  },
-  recCard: {
-    padding: 0,
-    overflow: 'hidden',
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.3)'
-  },
-  recGradient: {
-    padding: spacing.base
-  },
-  recTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  recPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    ...shadows.subtle
-  },
-  recPillText: {
-    ...typography.captionBold,
-    fontSize: 10,
-    color: colors.goldDark,
-    marginLeft: 4,
-    letterSpacing: 0.8
-  },
-  priceText: {
-    ...typography.metricValue,
-    fontSize: 18,
-    color: colors.primary
-  },
-  recProductRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  recProductThumb: {
-    width: 72,
-    height: 72,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.4)',
-    marginRight: spacing.md
-  },
-  recProductDetails: {
-    flex: 1
-  },
-  recBrand: {
-    ...typography.eyebrow,
-    fontSize: 10,
-    color: colors.goldDark,
-    letterSpacing: 0.8,
-    marginBottom: 2
-  },
-  recTitle: {
-    ...typography.title2,
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.textPrimary,
-    marginBottom: 3
-  },
-  recDesc: {
-    ...typography.caption,
-    fontSize: 12,
-    color: colors.textSecondary,
-    lineHeight: 16
-  },
-  whyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: spacing.sm,
-    borderRadius: radii.md,
-    marginTop: spacing.xs,
-    borderWidth: 1,
-    borderColor: 'rgba(26, 56, 43, 0.08)'
-  },
-  whyButtonText: {
-    ...typography.captionBold,
-    color: colors.primary,
-    fontSize: 12,
-    flex: 1,
-    marginLeft: spacing.xs
-  },
-  whyBox: {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    borderRadius: radii.md,
-    padding: spacing.sm,
-    marginTop: spacing.xs,
-    borderWidth: 1,
-    borderColor: 'rgba(26, 56, 43, 0.06)'
-  },
-  whyItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4
-  },
-  whyItemText: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textPrimary,
-    marginLeft: 6
-  }
+  screen: { flex: 1, backgroundColor: colors.background }, content: { padding: 20, paddingBottom: 40 },
+  hero: { height: 190, justifyContent: 'flex-end' }, heroShade: { borderBottomLeftRadius: 20, borderBottomRightRadius: 20, backgroundColor: 'rgba(20,40,30,0.66)', padding: 21 },
+  heroEyebrow: { color: '#E6CAA0', fontSize: 10, fontWeight: '800', letterSpacing: 1.7 }, heroTitle: { color: 'white', fontSize: 25, fontWeight: '700', marginTop: 8 },
+  subtitle: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 17, marginBottom: 17 },
+  addButton: { backgroundColor: colors.primary, minHeight: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 7 }, addText: { color: 'white', fontWeight: '700', fontSize: 15 },
+  section: { color: colors.goldDark, fontWeight: '800', fontSize: 10, letterSpacing: 1.5, marginTop: 28, marginBottom: 13 },
+  empty: { backgroundColor: 'white', borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 24, alignItems: 'center' }, emptyTitle: { color: colors.primary, fontSize: 17, fontWeight: '700', marginTop: 8 },
+  emptyCopy: { color: colors.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19, marginTop: 7 }, link: { color: colors.primary, fontWeight: '700', marginTop: 12 },
+  card: { flexDirection: 'row', backgroundColor: 'white', borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 14, marginBottom: 10, gap: 13 },
+  productIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }, category: { color: colors.goldDark, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  name: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', marginTop: 3 }, brand: { color: colors.textSecondary, fontSize: 12, marginTop: 3 }, opened: { color: colors.textTertiary, fontSize: 11, marginTop: 5 }, delete: { padding: 5 },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15,26,19,0.45)' }, sheet: { backgroundColor: colors.background, borderTopLeftRadius: 25, borderTopRightRadius: 25, maxHeight: '90%' }, sheetContent: { padding: 24, paddingBottom: 42 },
+  sheetTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }, sheetTitle: { color: colors.primary, fontSize: 21, fontWeight: '700' }, fieldLabel: { color: colors.goldDark, fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8, marginTop: 12 },
+  input: { backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: colors.border, minHeight: 48, paddingHorizontal: 13, color: colors.textPrimary, fontSize: 15 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, chip: { borderWidth: 1, borderColor: colors.border, borderRadius: 15, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: 'white' },
+  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary }, chipText: { color: colors.textSecondary, fontSize: 12, fontWeight: '600' }, chipTextSelected: { color: 'white' }
 });

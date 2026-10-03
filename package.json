@@ -2,20 +2,27 @@
   "name": "asmr-beauty-pro",
   "version": "1.0.0",
   "private": true,
-  "description": "Production-grade AI Skin Coach consumer mobile app and cloud backend",
+  "description": "Skincare routine mobile app and Firebase backend",
   "workspaces": [
     "packages/*"
   ],
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
+  },
   "scripts": {
+    "postinstall": "node scripts/patch-expo-constants-shell.cjs",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:shared": "npm run test -w @asmr/shared",
     "test:backend": "npm run test -w @asmr/backend",
-    "test:rules": "npm run test:rules -w @asmr/backend",
+    "test:rules": "firebase emulators:exec --project demo-asmr-paid-rules --only firestore 'node packages/backend/scripts/test-paid-firestore-rules.cjs'",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
+    "@expo/config-plugins": "~57.0.0",
+    "@expo/prebuild-config": "^57.0.15",
     "typescript": "^5.6.3"
   }
 }

@@ -6,6 +6,29 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "hosting": {
+    "site": "asmr-skin-coach",
+    "public": "hosting",
+    "cleanUrls": true,
+    "ignore": ["**/.*", "**/node_modules/**"],
+    "redirects": [
+      { "source": "/ASMR_BEATY_PRO", "destination": "/", "type": 301 },
+      { "source": "/ASMR_BEATY_PRO/", "destination": "/", "type": 301 },
+      { "regex": "/ASMR_BEATY_PRO/(.+)", "destination": "/:1", "type": 301 }
+    ],
+    "headers": [
+      {
+        "source": "**",
+        "headers": [
+          { "key": "Content-Security-Policy", "value": "default-src 'none'; img-src 'self'; style-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'; frame-ancestors 'none'" },
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "X-Frame-Options", "value": "DENY" },
+          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+          { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()" }
+        ]
+      }
+    ]
+  },
   "functions": [
     {
       "source": "packages/backend",

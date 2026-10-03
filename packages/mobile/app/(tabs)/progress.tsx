@@ -1,576 +1,86 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { useRouter } from 'expo-router';
+import React, { useCallback, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
-import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
-import { Card } from '../../src/components/Card';
-import { DisclaimerBar } from '../../src/components/DisclaimerBar';
+import { RoutineLog, RoutineLogService } from '../../src/services/routine-log-service';
+import { colors } from '../../src/theme/tokens';
 
-interface Milestone {
-  day: number;
-  label: string;
-  date: string;
-  status: 'completed' | 'active' | 'upcoming';
+function localDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 export default function ProgressScreen() {
-  const router = useRouter();
-  const [selectedMilestone, setSelectedMilestone] = useState<number>(14);
+  const [logs, setLogs] = useState<RoutineLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  const milestones: Milestone[] = [
-    { day: 1, label: 'Day 1', date: 'Aug 21', status: 'completed' },
-    { day: 7, label: 'Day 7', date: 'Aug 28', status: 'completed' },
-    { day: 14, label: 'Day 14', date: 'Sep 04', status: 'active' },
-    { day: 30, label: 'Day 30', date: 'Sep 20', status: 'upcoming' },
-    { day: 42, label: 'Day 42', date: 'Oct 02', status: 'upcoming' }
-  ];
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    RoutineLogService.recent(90).then((items) => {
+      if (active) { setLogs(items); setError(false); setLoading(false); }
+    }).catch(() => { if (active) { setError(true); setLoading(false); } });
+    return () => { active = false; };
+  }, []));
 
-  return (
-    <View style={styles.screen}>
-      <Header />
-      <ScrollView
-        style={styles.container}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header Section */}
-        <View style={styles.headerSection}>
-          <Text style={typography.eyebrow}>LONGITUDINAL APPEARANCE MEMORY</Text>
-          <Text style={styles.title}>42-Day Consistency</Text>
-          <Text style={styles.subtitle}>
-            Observational appearance evolution paired with your daily morning and evening skincare habits.
-          </Text>
+  const byDay = new Map(logs.map((log) => [log.day, log]));
+  const days = Array.from({ length: 14 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - 13 + index);
+    const day = localDateKey(date);
+    const completed = byDay.get(day)?.completedIds.length ?? 0;
+    return { day, label: date.toLocaleDateString(undefined, { weekday: 'short' }), date: date.getDate(), completed };
+  });
+  const activeDays = days.filter((day) => day.completed > 0).length;
+  const totalSteps = days.reduce((sum, day) => sum + day.completed, 0);
+  const today = days[days.length - 1];
+
+  return <View style={styles.screen}>
+    <Header />
+    <ScrollView contentContainerStyle={styles.content}>
+      <Text style={styles.eyebrow}>YOUR REAL RECORD</Text>
+      <Text style={styles.title}>Progress, at your pace.</Text>
+      <Text style={styles.subtitle}>A record of the ritual steps you marked complete. Your skin can change for many reasons; this view tracks consistency only.</Text>
+      {loading ? <ActivityIndicator style={{ marginTop: 50 }} color={colors.primary} /> : error ? <View style={styles.empty}><Text style={styles.emptyTitle}>Could not load your record</Text><Text style={styles.emptyCopy}>Check your connection and reopen this tab.</Text></View> : <>
+        <View style={styles.summary}>
+          <View><Text style={styles.bigNumber}>{activeDays}</Text><Text style={styles.metricLabel}>active days</Text></View>
+          <View style={styles.divider} />
+          <View><Text style={styles.bigNumber}>{totalSteps}</Text><Text style={styles.metricLabel}>steps completed</Text></View>
         </View>
-
-        {/* Milestone Timeline Carousel */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timelineScroll}>
-          {milestones.map((m) => {
-            const isSelected = selectedMilestone === m.day;
-            const isCurrent = m.status === 'active';
-            const isUpcoming = m.status === 'upcoming';
-            return (
-              <TouchableOpacity
-                key={m.day}
-                activeOpacity={0.8}
-                onPress={() => {
-                  if (isUpcoming) {
-                    router.push('/modal/paywall');
-                  } else {
-                    setSelectedMilestone(m.day);
-                  }
-                }}
-                style={[
-                  styles.milestoneNode,
-                  isSelected && styles.milestoneNodeSelected,
-                  isCurrent && styles.milestoneNodeCurrent
-                ]}
-              >
-                <View style={[styles.nodeIconWrap, isCurrent && styles.nodeIconWrapCurrent]}>
-                  <Ionicons
-                    name={m.status === 'completed' ? 'checkmark-circle' : isCurrent ? 'sparkles' : 'lock-closed'}
-                    size={16}
-                    color={isCurrent ? colors.textInverse : m.status === 'completed' ? colors.primary : colors.goldDark}
-                  />
-                </View>
-                <Text style={[styles.nodeLabel, isSelected && styles.nodeLabelSelected]}>{m.label}</Text>
-                <Text style={[styles.nodeDate, isSelected && styles.nodeDateSelected]}>{m.date}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Standardized Real Macro Skin Comparison */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Macro Skin Evolution</Text>
-          <View style={styles.calibPill}>
-            <View style={styles.calibDot} />
-            <Text style={styles.calibText}>5200K MATCH</Text>
-          </View>
+        <Text style={styles.sectionTitle}>Last 14 days</Text>
+        <View style={styles.calendar}>
+          {days.map((day) => <View key={day.day} accessible accessibilityLabel={`${day.day}: ${day.completed} ${day.completed === 1 ? 'step' : 'steps'} completed`} style={[styles.day, day.completed > 0 && styles.activeDay, day.day === today.day && styles.today]}>
+            <Text style={[styles.dayName, day.completed > 0 && styles.activeDayText]}>{day.label}</Text>
+            <Text style={[styles.dayDate, day.completed > 0 && styles.activeDayText]}>{day.date}</Text>
+            <View style={[styles.dayDot, day.completed > 0 && styles.activeDot]} />
+          </View>)}
         </View>
-
-        <Card variant="elevated" style={styles.compareCard}>
-          <View style={styles.compareRow}>
-            {/* Day 1 Baseline Photo */}
-            <View style={styles.compareSide}>
-              <View style={styles.photoContainer}>
-                <Image source={localImages.skinBefore} style={styles.compareImage} />
-                <View style={styles.photoBadgeBaseline}>
-                  <Text style={styles.photoBadgeText}>DAY 1 BASELINE</Text>
-                </View>
-              </View>
-              <View style={styles.photoInfo}>
-                <Text style={styles.photoDate}>Aug 21 • Initial</Text>
-                <Text style={styles.photoMetric}>Redness: 74 • Visible Pores</Text>
-              </View>
-            </View>
-
-            <View style={styles.compareDividerCol}>
-              <View style={styles.dividerLine} />
-              <View style={styles.versusBadge}>
-                <Text style={styles.versusText}>VS</Text>
-              </View>
-              <View style={styles.dividerLine} />
-            </View>
-
-            {/* Day 14 Current Photo */}
-            <View style={styles.compareSide}>
-              <View style={styles.photoContainer}>
-                <Image source={localImages.skinAfter} style={styles.compareImage} />
-                <View style={styles.photoBadgeCurrent}>
-                  <Ionicons name="sparkles" size={9} color={colors.textInverse} style={{ marginRight: 3 }} />
-                  <Text style={[styles.photoBadgeText, { color: colors.textInverse }]}>DAY 14 ACTIVE</Text>
-                </View>
-              </View>
-              <View style={styles.photoInfo}>
-                <Text style={styles.photoDate}>Sep 04 • Today</Text>
-                <Text style={[styles.photoMetric, { color: colors.routineDone, fontWeight: '600' }]}>
-                  Redness: 58 • Calmed Glow
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.lightingNotice}>
-            <Ionicons name="information-circle-outline" size={14} color={colors.textTertiary} />
-            <Text style={styles.lightingNoticeText}>
-              Standardized angle, focal distance & daylight spectrum ensure scientific appearance observation.
-            </Text>
-          </View>
-        </Card>
-
-        {/* Skin Memory: "What Changed?" Card */}
-        <Card variant="elevated" style={styles.memoryCard}>
-          <LinearGradient
-            colors={gradients.champagneGlow}
-            style={styles.memoryCardGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.memoryTopRow}>
-              <View style={styles.memoryBadge}>
-                <Ionicons name="sparkles" size={13} color={colors.goldDark} />
-                <Text style={styles.memoryBadgeText}>SKIN MEMORY INSIGHTS</Text>
-              </View>
-              <Text style={styles.memoryMeta}>Day 14 vs. Initial Baseline</Text>
-            </View>
-
-            <View style={styles.insightItem}>
-              <View style={styles.insightIconWrap}>
-                <Ionicons name="trending-down" size={14} color={colors.routineDone} />
-              </View>
-              <Text style={styles.insightText}>
-                <Text style={styles.boldSpan}>Visible Redness:</Text> Reduced by 16 points across the mid-cheeks compared to Day 1 baseline.
-              </Text>
-            </View>
-
-            <View style={styles.insightItem}>
-              <View style={styles.insightIconWrap}>
-                <Ionicons name="shield-checkmark-outline" size={14} color={colors.primary} />
-              </View>
-              <Text style={styles.insightText}>
-                <Text style={styles.boldSpan}>Barrier Stability:</Text> Surface hydration score held steady at 86/100 without active irritation.
-              </Text>
-            </View>
-
-            <View style={styles.insightItem}>
-              <View style={styles.insightIconWrap}>
-                <Ionicons name="leaf-outline" size={14} color={colors.goldDark} />
-              </View>
-              <Text style={styles.insightText}>
-                <Text style={styles.boldSpan}>Product Introduction:</Text> Introduced Centella Calming Serum 10 days ago with zero reported sensitivity.
-              </Text>
-            </View>
-
-            <View style={styles.insightItem}>
-              <View style={styles.insightIconWrap}>
-                <Ionicons name="flame" size={14} color={colors.terracotta} />
-              </View>
-              <Text style={styles.insightText}>
-                <Text style={styles.boldSpan}>Adherence:</Text> Completed 88% of scheduled evening routines over the 14-day observation window.
-              </Text>
-            </View>
-          </LinearGradient>
-        </Card>
-
-        {/* 42-Day Pro Program Unlock Banner */}
-        <TouchableOpacity
-          style={styles.proUnlockCard}
-          activeOpacity={0.85}
-          onPress={() => router.push('/modal/paywall')}
-        >
-          <LinearGradient
-            colors={[colors.primary, colors.primaryLight]}
-            style={styles.proUnlockGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.proUnlockTop}>
-              <View style={styles.proTagPill}>
-                <Ionicons name="sparkles" size={12} color={colors.gold} />
-                <Text style={styles.proTagPillText}>FULL PROGRAM ACCESS</Text>
-              </View>
-              <Text style={styles.proUnlockPrice}>$3.33/mo</Text>
-            </View>
-            <Text style={styles.proUnlockTitle}>Unlock Day 30 & Day 42 Milestones</Text>
-            <Text style={styles.proUnlockSub}>
-              Get weekly guided snapshots, routine compatibility checks, and long-term skin memory tracking.
-            </Text>
-            <View style={styles.proUnlockActionRow}>
-              <Text style={styles.proUnlockActionText}>View 42-Day Consistency Plan</Text>
-              <Ionicons name="arrow-forward" size={16} color={colors.textInverse} />
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-
-        {/* Non-Causality Scientific Disclaimer */}
-        <DisclaimerBar />
-      </ScrollView>
-    </View>
-  );
+        <View style={styles.note}>
+          <Ionicons name="leaf-outline" size={24} color={colors.primary} />
+          <View style={{ flex: 1 }}><Text style={styles.noteTitle}>Small steps count</Text><Text style={styles.noteCopy}>There is no penalty for missing a day. Return to your routine whenever it serves you.</Text></View>
+        </View>
+        {activeDays === 0 && <View style={styles.empty}><Text style={styles.emptyTitle}>Your record starts today</Text><Text style={styles.emptyCopy}>Check off any step on Today and it will appear here.</Text></View>}
+      </>}
+    </ScrollView>
+  </View>;
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background
-  },
-  container: {
-    flex: 1
-  },
-  content: {
-    paddingHorizontal: spacing.base,
-    paddingBottom: spacing.huge
-  },
-  headerSection: {
-    marginTop: spacing.xs,
-    marginBottom: spacing.md
-  },
-  title: {
-    ...typography.display,
-    fontSize: 28,
-    lineHeight: 34,
-    marginTop: spacing.xxs,
-    marginBottom: spacing.xs
-  },
-  subtitle: {
-    ...typography.body,
-    fontSize: 14,
-    lineHeight: 20
-  },
-  timelineScroll: {
-    marginBottom: spacing.lg
-  },
-  milestoneNode: {
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(26, 56, 43, 0.08)',
-    marginRight: spacing.sm,
-    alignItems: 'center',
-    minWidth: 78,
-    ...shadows.subtle
-  },
-  milestoneNodeSelected: {
-    borderColor: colors.goldDark,
-    backgroundColor: colors.surfaceSubtle
-  },
-  milestoneNodeCurrent: {
-    borderColor: colors.primary,
-    backgroundColor: 'rgba(26, 56, 43, 0.04)'
-  },
-  nodeIconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(26, 56, 43, 0.05)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 4
-  },
-  nodeIconWrapCurrent: {
-    backgroundColor: colors.primary
-  },
-  nodeLabel: {
-    ...typography.captionBold,
-    fontSize: 12,
-    color: colors.textPrimary
-  },
-  nodeLabelSelected: {
-    color: colors.primary
-  },
-  nodeDate: {
-    ...typography.caption,
-    fontSize: 10,
-    color: colors.textTertiary
-  },
-  nodeDateSelected: {
-    color: colors.textSecondary
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm
-  },
-  sectionTitle: {
-    ...typography.title2,
-    fontSize: 18,
-    fontWeight: '700',
-    color: colors.textPrimary
-  },
-  calibPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(26, 56, 43, 0.06)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: radii.full
-  },
-  calibDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: colors.routineDone,
-    marginRight: 4
-  },
-  calibText: {
-    ...typography.captionBold,
-    fontSize: 9,
-    color: colors.primary,
-    letterSpacing: 0.6
-  },
-  compareCard: {
-    padding: spacing.base,
-    marginBottom: spacing.lg
-  },
-  compareRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  compareSide: {
-    flex: 1
-  },
-  photoContainer: {
-    width: '100%',
-    aspectRatio: 1,
-    borderRadius: radii.md,
-    overflow: 'hidden',
-    position: 'relative',
-    ...shadows.subtle
-  },
-  compareImage: {
-    width: '100%',
-    height: '100%'
-  },
-  photoBadgeBaseline: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    backgroundColor: 'rgba(19, 30, 24, 0.82)',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: radii.sm
-  },
-  photoBadgeCurrent: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: radii.sm
-  },
-  photoBadgeText: {
-    ...typography.captionBold,
-    fontSize: 8.5,
-    color: colors.goldLight,
-    letterSpacing: 0.6
-  },
-  photoInfo: {
-    marginTop: spacing.xs
-  },
-  photoDate: {
-    ...typography.captionBold,
-    fontSize: 12,
-    color: colors.textPrimary
-  },
-  photoMetric: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textSecondary,
-    marginTop: 1
-  },
-  compareDividerCol: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm
-  },
-  dividerLine: {
-    width: 1,
-    height: 35,
-    backgroundColor: 'rgba(26, 56, 43, 0.12)'
-  },
-  versusBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: colors.surfaceSubtle,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(26, 56, 43, 0.1)'
-  },
-  versusText: {
-    ...typography.captionBold,
-    fontSize: 10,
-    color: colors.primary
-  },
-  lightingNotice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: spacing.md,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(26, 56, 43, 0.06)'
-  },
-  lightingNoticeText: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textTertiary,
-    marginLeft: 6,
-    flex: 1,
-    lineHeight: 15
-  },
-  memoryCard: {
-    padding: 0,
-    overflow: 'hidden',
-    marginBottom: spacing.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(197, 154, 111, 0.3)'
-  },
-  memoryCardGradient: {
-    padding: spacing.base
-  },
-  memoryTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md
-  },
-  memoryBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radii.full,
-    ...shadows.subtle
-  },
-  memoryBadgeText: {
-    ...typography.captionBold,
-    fontSize: 10,
-    color: colors.goldDark,
-    marginLeft: 4,
-    letterSpacing: 0.8
-  },
-  memoryMeta: {
-    ...typography.caption,
-    fontSize: 11,
-    color: colors.textSecondary
-  },
-  insightItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.sm + 2
-  },
-  insightIconWrap: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm,
-    marginTop: 1,
-    ...shadows.subtle
-  },
-  insightText: {
-    ...typography.body,
-    fontSize: 13,
-    color: colors.textPrimary,
-    flex: 1,
-    lineHeight: 18
-  },
-  boldSpan: {
-    fontWeight: '700',
-    color: colors.primary
-  },
-  proUnlockCard: {
-    borderRadius: radii.lg,
-    overflow: 'hidden',
-    marginBottom: spacing.lg,
-    ...shadows.card
-  },
-  proUnlockGradient: {
-    padding: spacing.base
-  },
-  proUnlockTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs
-  },
-  proTagPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: radii.full
-  },
-  proTagPillText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: colors.gold,
-    marginLeft: 4,
-    letterSpacing: 0.8
-  },
-  proUnlockPrice: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: colors.textInverseMuted
-  },
-  proUnlockTitle: {
-    ...typography.title3,
-    fontSize: 16,
-    color: colors.textInverse,
-    marginTop: 4,
-    marginBottom: 2
-  },
-  proUnlockSub: {
-    ...typography.caption,
-    fontSize: 12,
-    lineHeight: 16,
-    color: colors.textInverseMuted,
-    marginBottom: spacing.sm
-  },
-  proUnlockActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  proUnlockActionText: {
-    ...typography.captionBold,
-    fontSize: 12,
-    color: colors.textInverse,
-    marginRight: 4
-  }
+  screen: { flex: 1, backgroundColor: colors.background }, content: { padding: 22, paddingBottom: 45 },
+  eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 1.8, color: colors.goldDark, marginBottom: 8 },
+  title: { fontSize: 30, lineHeight: 35, fontWeight: '700', color: colors.primary },
+  subtitle: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, marginTop: 11, marginBottom: 24 },
+  summary: { flexDirection: 'row', backgroundColor: colors.primary, borderRadius: 20, padding: 24, justifyContent: 'space-around', alignItems: 'center' },
+  bigNumber: { fontSize: 34, color: 'white', fontWeight: '700', textAlign: 'center' }, metricLabel: { color: '#DCE8DF', fontSize: 12, textAlign: 'center', marginTop: 2 },
+  divider: { backgroundColor: 'rgba(255,255,255,0.25)', height: 48, width: 1 },
+  sectionTitle: { fontSize: 19, fontWeight: '700', color: colors.textPrimary, marginTop: 29, marginBottom: 14 },
+  calendar: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 4, rowGap: 8 },
+  day: { width: '12.5%', height: 70, borderRadius: 13, backgroundColor: 'white', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border },
+  activeDay: { backgroundColor: colors.primarySoft, borderColor: colors.primaryLight }, today: { borderWidth: 2, borderColor: colors.gold },
+  dayName: { fontSize: 9, color: colors.textTertiary, textTransform: 'uppercase' }, dayDate: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', marginTop: 4 }, activeDayText: { color: colors.primary },
+  dayDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.border, marginTop: 5 }, activeDot: { backgroundColor: colors.primary },
+  note: { flexDirection: 'row', gap: 13, padding: 18, borderRadius: 16, backgroundColor: colors.primarySoft, marginTop: 25 },
+  noteTitle: { color: colors.primary, fontWeight: '700', fontSize: 14 }, noteCopy: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  empty: { borderWidth: 1, borderColor: colors.border, borderRadius: 17, backgroundColor: 'white', padding: 22, marginTop: 25 },
+  emptyTitle: { fontSize: 17, color: colors.primary, fontWeight: '700' }, emptyCopy: { fontSize: 13, lineHeight: 19, color: colors.textSecondary, marginTop: 6 }
 });

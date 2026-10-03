@@ -1,50 +1,198 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ImageBackground } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ImageBackground, ActivityIndicator, AppState, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import auth from '@react-native-firebase/auth';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radii, shadows, gradients } from '../../src/theme/tokens';
 import { localImages } from '../../src/theme/images';
 import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
+import { RoutineLogCorrectionError, RoutineLogService } from '../../src/services/routine-log-service';
+import { RoutineService, RoutineStep, STARTER_STEPS } from '../../src/services/routine-service';
+import { OnboardingService } from '../../src/services/onboarding-machine';
+import { buildStarterPlan, StarterPlan } from '../../src/services/personalized-starter';
 
-interface RoutineStep {
-  id: string;
-  name: string;
-  category: string;
-  detail: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  duration: string;
-  completed: boolean;
+const localDayKey = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+type DisplayStep = RoutineStep & { completed: boolean };
+type PendingStep = { day: string; completed: boolean; operation: number; settled: boolean };
+
+function iconFor(category: RoutineStep['category']): keyof typeof Ionicons.glyphMap {
+  return ({ Cleanse: 'water-outline', Hydrate: 'sparkles-outline', Treat: 'leaf-outline', Protect: 'shield-checkmark-outline', Other: 'ellipse-outline' } as const)[category];
 }
 
 export default function TodayScreen() {
-  const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const [steps, setSteps] = useState<DisplayStep[]>(STARTER_STEPS.map(step => ({ ...step, completed: false })));
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [syncPending, setSyncPending] = useState(false);
+  const [showSyncNotice, setShowSyncNotice] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [dayRevision, setDayRevision] = useState(0);
+  const [playerPeriod, setPlayerPeriod] = useState<'morning' | 'evening' | null>(null);
+  const [playerIndex, setPlayerIndex] = useState(0);
+  const [starterPlan, setStarterPlan] = useState<StarterPlan | null>(null);
+  const currentDay = useRef(localDayKey());
+  const routineSteps = useRef<RoutineStep[]>(STARTER_STEPS);
+  const latestCompleted = useRef(new Set<string>());
+  const pendingSteps = useRef(new Map<string, PendingStep>());
+  const latestIntent = useRef(new Map<string, boolean>());
+  const operationId = useRef(0);
+  const snapshotHasPendingWrites = useRef(false);
+  const mounted = useRef(true);
 
-  const [morningSteps, setMorningSteps] = useState<RoutineStep[]>([
-    { id: 'm1', name: 'Gentle Hydrating Cleanser', category: 'Cleanse', detail: 'Lukewarm water, pat dry gently', icon: 'water-outline', duration: '45s', completed: true },
-    { id: 'm2', name: 'Barrier Recovery Moisturizer', category: 'Hydrate', detail: 'Pea-sized amount over damp skin', icon: 'sparkles-outline', duration: '30s', completed: true },
-    { id: 'm3', name: 'Broad Spectrum Mineral SPF 50', category: 'Protect', detail: 'Two finger lengths, reapply if outdoors', icon: 'shield-checkmark-outline', duration: '1m', completed: false }
-  ]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
-  const [eveningSteps, setEveningSteps] = useState<RoutineStep[]>([
-    { id: 'e1', name: 'Gentle Hydrating Cleanser', category: 'Cleanse', detail: 'Massage for 45s to dissolve sunscreen', icon: 'water-outline', duration: '45s', completed: false },
-    { id: 'e2', name: 'Centella Calming Serum', category: 'Target', detail: '3-4 drops for visible cheek redness', icon: 'leaf-outline', duration: '30s', completed: false },
-    { id: 'e3', name: 'Barrier Recovery Moisturizer', category: 'Nourish', detail: 'Lock in night hydration', icon: 'moon-outline', duration: '30s', completed: false }
-  ]);
+  useEffect(() => {
+    if (!syncPending) {
+      setShowSyncNotice(false);
+      return;
+    }
+    const notice = setTimeout(() => setShowSyncNotice(true), 1200);
+    return () => clearTimeout(notice);
+  }, [syncPending]);
 
-  const toggleMorning = (id: string) => {
-    setMorningSteps(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
-  };
+  const applyCurrentLog = useCallback(() => {
+    const completed = new Set(latestCompleted.current);
+    for (const [id, pending] of pendingSteps.current) {
+      if (pending.day !== currentDay.current) continue;
+      if (pending.settled && completed.has(id) === pending.completed) {
+        pendingSteps.current.delete(id);
+      } else if (pending.completed) completed.add(id);
+      else completed.delete(id);
+    }
+    setSteps(routineSteps.current.map(step => ({ ...step, completed: completed.has(step.id) })));
+    setSyncPending(snapshotHasPendingWrites.current ||
+      [...pendingSteps.current.values()].some(pending => pending.day === currentDay.current));
+  }, []);
 
-  const toggleEvening = (id: string) => {
-    setEveningSteps(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s));
-  };
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    let unsubscribe = () => {};
+    const day = localDayKey();
+    currentDay.current = day;
+    setLoading(true);
+    setSyncError(null);
+    RoutineService.get().then(routine => {
+      if (!active) return;
+      routineSteps.current = routine;
+      unsubscribe = RoutineLogService.watch(day, ({ log, pendingWrites }) => {
+        if (!active) return;
+        latestCompleted.current = new Set(log?.completedIds ?? []);
+        snapshotHasPendingWrites.current = pendingWrites;
+        applyCurrentLog();
+        setLoadError(null);
+        setLoading(false);
+      }, cause => {
+        if (!active) return;
+        setLoadError(cause.message);
+        setLoading(false);
+      });
+    }).catch((cause) => { if (active) { console.warn('[Today] load failed', cause); setLoadError(cause instanceof Error ? cause.message : String(cause)); setLoading(false); } });
+    const uid = auth().currentUser?.uid;
+    if (uid) OnboardingService.getStarterPreferences(uid).then(answers => {
+      if (active) setStarterPlan(answers ? buildStarterPlan(answers) : null);
+    }).catch(() => { if (active) setStarterPlan(null); });
+    return () => { active = false; unsubscribe(); };
+  }, [applyCurrentLog, dayRevision]));
 
-  const completedCount = [...morningSteps, ...eveningSteps].filter(s => s.completed).length;
-  const totalCount = morningSteps.length + eveningSteps.length;
-  const progressPercent = Math.round((completedCount / totalCount) * 100);
+  useEffect(() => {
+    const checkDay = () => {
+      if (localDayKey() !== currentDay.current) {
+        setPlayerPeriod(null);
+        setDayRevision(revision => revision + 1);
+      }
+    };
+    const now = new Date();
+    const nextDay = new Date(now);
+    nextDay.setHours(24, 0, 0, 50);
+    const midnight = setTimeout(checkDay, nextDay.getTime() - now.getTime());
+    const appState = AppState.addEventListener('change', status => {
+      if (status === 'active') checkDay();
+    });
+    return () => { clearTimeout(midnight); appState.remove(); };
+  }, [dayRevision]);
+
+  function toggleStep(id: string): boolean {
+    const day = localDayKey();
+    if (day !== currentDay.current) {
+      setPlayerPeriod(null);
+      setDayRevision(revision => revision + 1);
+      return false;
+    }
+    const step = steps.find(item => item.id === id);
+    if (!step || loading || loadError) return false;
+    const previous = pendingSteps.current.get(id);
+    const completed = !(previous?.day === day ? previous.completed : step.completed);
+    const operation = ++operationId.current;
+    const intentKey = `${day}:${id}`;
+    latestIntent.current.set(intentKey, completed);
+    pendingSteps.current.set(id, { day, completed, operation, settled: false });
+    setSyncError(null);
+    applyCurrentLog();
+    void RoutineLogService.setStep(day, id, completed, routineSteps.current.map(item => item.id),
+      () => latestIntent.current.get(intentKey))
+      .then(() => {
+        const pending = pendingSteps.current.get(id);
+        if (pending?.operation === operation) {
+          pendingSteps.current.set(id, { ...pending, settled: true });
+          if (mounted.current && currentDay.current === day) applyCurrentLog();
+        }
+      })
+      .catch(cause => {
+        if (pendingSteps.current.get(id)?.operation !== operation) {
+          if (cause instanceof RoutineLogCorrectionError && mounted.current && currentDay.current === day) {
+            setSyncError('Your last step change could not sync. Check your connection or membership, then try again.');
+          }
+          return;
+        }
+        pendingSteps.current.delete(id);
+        if (mounted.current && currentDay.current === day) {
+          setSyncError('A step could not sync. Check your connection or membership, then try again.');
+          applyCurrentLog();
+        }
+      });
+    return true;
+  }
+
+  function openPlayer(period: 'morning' | 'evening') {
+    const periodSteps = steps.filter(step => step.period === period);
+    if (!periodSteps.length) return;
+    const firstIncomplete = periodSteps.findIndex(step => !step.completed);
+    setPlayerIndex(firstIncomplete < 0 ? 0 : firstIncomplete);
+    setPlayerPeriod(period);
+  }
+
+  function nextPlayerStep() {
+    const count = steps.filter(step => step.period === playerPeriod).length;
+    if (playerIndex + 1 >= count) setPlayerPeriod(null);
+    else setPlayerIndex(index => index + 1);
+  }
+
+  function completePlayerStep() {
+    const current = steps.filter(step => step.period === playerPeriod)[playerIndex];
+    if (!current) return;
+    if (current.completed || toggleStep(current.id)) nextPlayerStep();
+  }
+
+  const morningSteps = steps.filter(step => step.period === 'morning');
+  const eveningSteps = steps.filter(step => step.period === 'evening');
+  const completedCount = steps.filter(step => step.completed).length;
+  const totalCount = steps.length;
+  const progressPercent = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
+  const playerSteps = steps.filter(step => step.period === playerPeriod);
+  const playerStep = playerSteps[playerIndex];
 
   return (
     <View style={styles.screen}>
@@ -57,7 +205,7 @@ export default function TodayScreen() {
         {/* Editorial Real Photography Hero Banner */}
         <View style={styles.editorialBanner}>
           <ImageBackground
-            source={localImages.morningGlow}
+            source={localImages.editorialHero}
             style={styles.editorialImage}
             imageStyle={{ borderRadius: radii.lg }}
           >
@@ -67,17 +215,30 @@ export default function TodayScreen() {
             >
               <View style={styles.editorialPill}>
                 <Ionicons name="sparkles" size={11} color={colors.goldDark} style={{ marginRight: 5 }} />
-                <Text style={styles.editorialPillText}>DAY 12 • MORNING GLOW RITUAL</Text>
+                <Text style={styles.editorialPillText}>YOUR DAILY RITUAL</Text>
               </View>
-              <Text style={styles.editorialTitle}>Nourish & Protect Your Barrier</Text>
+              <Text style={styles.editorialTitle}>Care for your skin, one step at a time</Text>
               <Text style={styles.editorialSubtitle}>
-                Surface hydration steady. Complete your AM routine to sustain progress.
+                Your own routine, one step at a time.
               </Text>
             </LinearGradient>
           </ImageBackground>
         </View>
 
-        {/* Hero Consistency & Streak Card */}
+        {starterPlan && <View style={styles.startingPath}>
+          <Text style={styles.startingEyebrow}>MADE FROM YOUR ANSWERS</Text>
+          <Text style={styles.startingTitle}>{starterPlan.ritualName}</Text>
+          <Text style={styles.startingIntro}>Your first-week path</Text>
+          {starterPlan.firstWeek.map((moment, index) => <View key={moment.day} style={[styles.startingMoment, index > 0 && styles.startingMomentBorder]}>
+            <View style={styles.startingDay}><Text style={styles.startingDayText}>{moment.day}</Text></View>
+            <View style={styles.startingMomentCopy}><Text style={styles.startingMomentTitle}>{moment.title}</Text><Text style={styles.startingMomentDetail}>{moment.detail}</Text></View>
+          </View>)}
+        </View>}
+
+        {loading ? <ActivityIndicator style={{ marginTop: 34 }} color={colors.primary} /> : loadError ? <Card variant="elevated" style={styles.streakCard}><Text style={styles.sectionTitle}>Could not load your routine</Text><Text style={styles.stepDetail}>{__DEV__ ? loadError : 'Check your connection and reopen Today.'}</Text></Card> : <>
+        {showSyncNotice && <Text accessibilityLiveRegion="polite" style={styles.syncNotice}>Changes on this device are waiting to sync.</Text>}
+        {syncError && <Text accessibilityRole="alert" style={styles.syncError}>{syncError}</Text>}
+        {/* Daily completion card */}
         <Card variant="elevated" style={styles.streakCard}>
           <LinearGradient
             colors={gradients.botanicalMist}
@@ -87,8 +248,8 @@ export default function TodayScreen() {
           >
             <View style={styles.streakTopRow}>
               <View style={styles.streakBadge}>
-                <Ionicons name="flame" size={16} color={colors.terracotta} />
-                <Text style={styles.streakBadgeText}>6-DAY STREAK</Text>
+                <Ionicons name="checkmark-circle-outline" size={16} color={colors.terracotta} />
+                <Text style={styles.streakBadgeText}>TODAY'S PROGRESS</Text>
               </View>
               <View style={styles.progressCounter}>
                 <Text style={styles.counterText}>{completedCount}/{totalCount} Completed</Text>
@@ -103,32 +264,14 @@ export default function TodayScreen() {
             </View>
 
             <View style={styles.milestoneRow}>
-              <Text style={styles.milestoneLabel}>Day 1</Text>
+              <Text style={styles.milestoneLabel}>Morning</Text>
               <View style={styles.milestoneDivider} />
-              <Text style={[styles.milestoneLabel, styles.milestoneActive]}>Day 12 Active</Text>
+              <Text style={[styles.milestoneLabel, styles.milestoneActive]}>Today</Text>
               <View style={styles.milestoneDivider} />
-              <Text style={styles.milestoneLabel}>Day 42 Goal</Text>
+              <Text style={styles.milestoneLabel}>Evening</Text>
             </View>
           </LinearGradient>
         </Card>
-
-        {/* Next Scheduled Scan Banner with Real Photo Preview */}
-        <TouchableOpacity
-          style={styles.nextScanCard}
-          activeOpacity={0.85}
-          onPress={() => router.push('/(tabs)/scan')}
-        >
-          <View style={styles.scanThumbWrap}>
-            <Image source={localImages.scanPortrait} style={styles.scanThumb} />
-            <View style={styles.scanThumbDot} />
-          </View>
-          <View style={styles.scanTextWrap}>
-            <Text style={styles.scanEyebrow}>UPCOMING BIOMETRIC SCAN</Text>
-            <Text style={styles.scanTitle}>Day 14 Skin Snapshot</Text>
-            <Text style={styles.scanSub}>Scheduled in 2 days • Track cheek redness & texture</Text>
-          </View>
-          <Ionicons name="scan-outline" size={24} color={colors.primary} />
-        </TouchableOpacity>
 
         {/* Morning Ritual Section */}
         <View style={styles.sectionHeaderRow}>
@@ -136,19 +279,22 @@ export default function TodayScreen() {
             <Ionicons name="sunny-outline" size={18} color={colors.goldDark} style={styles.sectionIcon} />
             <Text style={styles.sectionTitle}>Morning Ritual</Text>
           </View>
-          <Text style={styles.sectionMeta}>3 Simple Steps • 2 Min</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Start guided morning ritual" onPress={() => openPlayer('morning')} disabled={!morningSteps.length} style={styles.startPlayer}><Ionicons name="play" size={12} color={colors.primary} /><Text style={styles.startPlayerText}>Guide me</Text></Pressable>
         </View>
 
         {morningSteps.map((step, idx) => (
           <TouchableOpacity
             key={step.id}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: step.completed }}
+            accessibilityLabel={`${step.name}, morning routine`}
             activeOpacity={0.78}
-            onPress={() => toggleMorning(step.id)}
+            onPress={() => toggleStep(step.id)}
             style={[styles.stepCard, step.completed && styles.stepCardCompleted]}
           >
             <View style={[styles.stepIconWrap, step.completed && styles.stepIconWrapDone]}>
               <Ionicons
-                name={step.completed ? 'checkmark' : step.icon}
+                name={step.completed ? 'checkmark' : iconFor(step.category)}
                 size={18}
                 color={step.completed ? colors.textInverse : colors.primary}
               />
@@ -159,7 +305,7 @@ export default function TodayScreen() {
                 <Text style={styles.stepCategory}>
                   STEP {idx + 1} • {step.category.toUpperCase()}
                 </Text>
-                <Text style={styles.stepDuration}>{step.duration}</Text>
+                <Text style={styles.stepDuration}>{step.completed ? 'Done' : 'Tap to complete'}</Text>
               </View>
               <Text style={[styles.stepName, step.completed && styles.stepNameCompleted]}>
                 {step.name}
@@ -179,19 +325,22 @@ export default function TodayScreen() {
             <Ionicons name="moon-outline" size={18} color={colors.primaryLight} style={styles.sectionIcon} />
             <Text style={styles.sectionTitle}>Evening Ritual</Text>
           </View>
-          <Text style={styles.sectionMeta}>Scheduled after 8:00 PM</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Start guided evening ritual" onPress={() => openPlayer('evening')} disabled={!eveningSteps.length} style={styles.startPlayer}><Ionicons name="play" size={12} color={colors.primary} /><Text style={styles.startPlayerText}>Guide me</Text></Pressable>
         </View>
 
         {eveningSteps.map((step, idx) => (
           <TouchableOpacity
             key={step.id}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: step.completed }}
+            accessibilityLabel={`${step.name}, evening routine`}
             activeOpacity={0.78}
-            onPress={() => toggleEvening(step.id)}
+            onPress={() => toggleStep(step.id)}
             style={[styles.stepCard, step.completed && styles.stepCardCompleted]}
           >
             <View style={[styles.stepIconWrap, step.completed && styles.stepIconWrapDone]}>
               <Ionicons
-                name={step.completed ? 'checkmark' : step.icon}
+                name={step.completed ? 'checkmark' : iconFor(step.category)}
                 size={18}
                 color={step.completed ? colors.textInverse : colors.primary}
               />
@@ -202,7 +351,7 @@ export default function TodayScreen() {
                 <Text style={styles.stepCategory}>
                   STEP {idx + 1} • {step.category.toUpperCase()}
                 </Text>
-                <Text style={styles.stepDuration}>{step.duration}</Text>
+                <Text style={styles.stepDuration}>{step.completed ? 'Done' : 'Tap to complete'}</Text>
               </View>
               <Text style={[styles.stepName, step.completed && styles.stepNameCompleted]}>
                 {step.name}
@@ -216,32 +365,38 @@ export default function TodayScreen() {
           </TouchableOpacity>
         ))}
 
-        {/* Concierge Coach Touchpoint with Real Aesthetician Avatar */}
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => router.push('/(tabs)/coach')}
-          style={styles.coachCard}
-        >
-          <View style={styles.coachRow}>
-            <Image source={localImages.coachPortrait} style={styles.coachAvatarImg} />
-            <View style={styles.coachTextWrap}>
-              <View style={styles.coachHeaderRow}>
-                <Text style={styles.coachTitle}>Ask your AI Skin Coach</Text>
-                <View style={styles.onlineBadge}>
-                  <View style={styles.onlineDot} />
-                  <Text style={styles.onlineText}>Active</Text>
-                </View>
-              </View>
-              <Text style={styles.coachPrompt}>
-                "Can I use my soothing serum alongside tonight's routine?"
-              </Text>
-            </View>
-            <Ionicons name="arrow-forward" size={18} color={colors.primary} />
-          </View>
-        </TouchableOpacity>
-
+        </>}
         <DisclaimerBar showAffiliate={false} />
       </ScrollView>
+      <Modal visible={playerPeriod !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setPlayerPeriod(null)}>
+        <View style={styles.playerScreen}>
+          <ScrollView style={styles.playerScroll} contentContainerStyle={{ paddingBottom: 18 }}>
+            <ImageBackground source={playerPeriod === 'morning' ? localImages.editorialHero : localImages.editorialRoutine} style={[styles.playerHero, { height: Math.min(300, Math.max(225, windowHeight * 0.34)), paddingTop: insets.top + 16 }]} resizeMode="cover">
+              <LinearGradient colors={['rgba(18,38,28,0.65)', 'rgba(18,38,28,0.08)', 'rgba(18,38,28,0.78)']} style={styles.playerShade}>
+                <Pressable accessibilityRole="button" accessibilityLabel="Close guided ritual" onPress={() => setPlayerPeriod(null)} style={styles.playerClose}><Ionicons name="close" size={23} color="white" /></Pressable>
+                <View><Text style={styles.playerEyebrow}>{playerPeriod === 'morning' ? 'MORNING' : 'EVENING'} RITUAL</Text><Text style={styles.playerHeroTitle}>One step at a time.</Text></View>
+              </LinearGradient>
+            </ImageBackground>
+            {playerStep && <View style={styles.playerBody}>
+              <View style={styles.playerProgress}><Text style={styles.playerCount}>STEP {playerIndex + 1} OF {playerSteps.length}</Text><Text style={styles.playerCategory}>{playerStep.category.toUpperCase()}</Text></View>
+              <View style={styles.playerTrack}><View style={[styles.playerFill, { width: `${Math.round((playerIndex + 1) / playerSteps.length * 100)}%` }]} /></View>
+              <Text style={styles.playerTitle}>{playerStep.name}</Text>
+              <Text style={styles.playerDetail}>{playerStep.detail || 'Follow the instructions on the product you use.'}</Text>
+              <View style={styles.playerNote}><Ionicons name="heart-outline" size={20} color={colors.goldDark} /><Text style={styles.playerNoteText}>Use products you already tolerate. Pause anything that irritates your skin.</Text></View>
+              {playerStep.completed && <Text style={styles.playerDone}>Already completed today</Text>}
+              {showSyncNotice && <Text style={styles.playerDone}>Changes are waiting to sync.</Text>}
+              {syncError && <Text style={styles.syncError}>{syncError}</Text>}
+            </View>}
+          </ScrollView>
+          {playerStep && <View style={[styles.playerActions, { paddingBottom: Math.max(insets.bottom, 14) }]}>
+            <Pressable accessibilityRole="button" onPress={completePlayerStep} style={styles.playerPrimary}><Text style={styles.playerPrimaryText}>{playerStep.completed ? playerIndex + 1 === playerSteps.length ? 'Finish ritual' : 'Next step' : 'Mark done and continue'}</Text></Pressable>
+            <View style={styles.playerSecondaryRow}>
+              <Pressable accessibilityRole="button" disabled={playerIndex === 0} onPress={() => setPlayerIndex(index => index - 1)} style={styles.playerSecondary}><Text style={[styles.playerSecondaryText, playerIndex === 0 && styles.playerDisabled]}>Previous</Text></Pressable>
+              <Pressable accessibilityRole="button" onPress={nextPlayerStep} style={styles.playerSecondary}><Text style={styles.playerSecondaryText}>{playerIndex + 1 === playerSteps.length ? 'Finish for now' : 'Skip for now'}</Text></Pressable>
+            </View>
+          </View>}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -258,6 +413,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.base,
     paddingBottom: spacing.huge
   },
+  syncNotice: { color: colors.primary, backgroundColor: colors.primarySoft, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 18 },
+  syncError: { color: '#A64032', backgroundColor: colors.terracottaLight, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 18 },
+  startingPath: { backgroundColor: '#FBFAF6', borderColor: '#E4E4D9', borderWidth: 1, borderRadius: 20, padding: 18, marginBottom: spacing.md },
+  startingEyebrow: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.5, fontWeight: '800' },
+  startingTitle: { color: colors.primary, fontSize: 23, fontWeight: '700', marginTop: 6 },
+  startingIntro: { color: colors.textSecondary, fontSize: 13, marginTop: 5, marginBottom: 12 },
+  startingMoment: { flexDirection: 'row', gap: 11, paddingVertical: 11 },
+  startingMomentBorder: { borderTopWidth: 1, borderTopColor: colors.borderLight },
+  startingDay: { width: 69, paddingTop: 3 }, startingDayText: { color: colors.goldDark, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  startingMomentCopy: { flex: 1 }, startingMomentTitle: { color: colors.primary, fontSize: 14, fontWeight: '700' },
+  startingMomentDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 3 },
   editorialBanner: {
     marginTop: spacing.sm,
     marginBottom: spacing.md,
@@ -470,6 +636,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.textPrimary
   },
+  startPlayer: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.primarySoft, paddingHorizontal: 12, minHeight: 35, borderRadius: 18 },
+  startPlayerText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   sectionMeta: {
     ...typography.caption,
     color: colors.textTertiary,
@@ -617,5 +785,30 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     color: colors.textSecondary,
     lineHeight: 16
-  }
+  },
+  playerScreen: { flex: 1, backgroundColor: colors.background },
+  playerScroll: { flex: 1 },
+  playerHero: { height: 300 },
+  playerShade: { flex: 1, justifyContent: 'space-between', paddingHorizontal: 24, paddingBottom: 25 },
+  playerClose: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(0,0,0,0.28)', alignItems: 'center', justifyContent: 'center' },
+  playerEyebrow: { color: '#F4DDAD', fontSize: 11, letterSpacing: 2, fontWeight: '800' },
+  playerHeroTitle: { color: 'white', fontSize: 33, lineHeight: 39, fontWeight: '700', marginTop: 8 },
+  playerBody: { paddingHorizontal: 26, paddingTop: 18 },
+  playerProgress: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  playerCount: { color: colors.goldDark, fontSize: 11, fontWeight: '800', letterSpacing: 1.3 },
+  playerCategory: { color: colors.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  playerTrack: { height: 5, backgroundColor: colors.primarySoft, borderRadius: 3, overflow: 'hidden', marginTop: 13 },
+  playerFill: { height: 5, backgroundColor: colors.primary, borderRadius: 3 },
+  playerTitle: { color: colors.primary, fontSize: 30, lineHeight: 36, fontWeight: '700', marginTop: 18 },
+  playerDetail: { color: colors.textSecondary, fontSize: 16, lineHeight: 25, marginTop: 10 },
+  playerNote: { flexDirection: 'row', gap: 11, alignItems: 'flex-start', backgroundColor: '#F3EFE6', borderRadius: 16, padding: 17, marginTop: 16 },
+  playerNoteText: { flex: 1, color: colors.textSecondary, fontSize: 13, lineHeight: 19 },
+  playerDone: { color: colors.primary, fontSize: 12, fontWeight: '700', marginTop: 20 },
+  playerActions: { borderTopWidth: 1, borderColor: colors.border, backgroundColor: '#FCFBF8', paddingHorizontal: 22, paddingTop: 12 },
+  playerPrimary: { backgroundColor: colors.primary, minHeight: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  playerPrimaryText: { color: 'white', fontSize: 15, fontWeight: '700' },
+  playerSecondaryRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  playerSecondary: { minHeight: 37, justifyContent: 'center', paddingHorizontal: 8 },
+  playerSecondaryText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
+  playerDisabled: { opacity: 0.35 }
 });

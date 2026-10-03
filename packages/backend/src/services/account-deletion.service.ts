@@ -1,84 +1,111 @@
 import * as admin from 'firebase-admin';
 
 export class AccountDeletionService {
-  private db: admin.firestore.Firestore;
-  private storage: admin.storage.Storage;
+  constructor(
+    private readonly db: admin.firestore.Firestore,
+    private readonly storage: admin.storage.Storage,
+    private readonly auth: admin.auth.Auth
+  ) {}
 
-  constructor(db: admin.firestore.Firestore, storage: admin.storage.Storage) {
-    this.db = db;
-    this.storage = storage;
-  }
-
-  /**
-   * Complete GDPR & App Store compliant account erasure.
-   * Deletes all photos, biometric scan data, routine history, conversation memory, and profile records.
-   */
-  async deleteUserAccountData(userId: string): Promise<{ deleted: boolean; deletedCollections: string[] }> {
-    const subcollections = [
-      'skinScans',
-      'skinSnapshots',
-      'routines',
-      'routineLogs',
-      'shelf',
-      'spotJournals',
-      'progressEntries',
-      'recommendations',
-      'usage'
-    ];
-
-    const deletedCollections: string[] = [];
-
-    // 1. Delete all standard Firestore subcollections
-    for (const subcol of subcollections) {
-      const colRef = this.db.collection('users').doc(userId).collection(subcol);
-      const snapshot = await colRef.get();
-      const batch = this.db.batch();
-      snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-      await batch.commit();
-      deletedCollections.push(subcol);
-    }
-
-    // 2. Delete conversations and nested messages
-    const convSnapshot = await this.db.collection('users').doc(userId).collection('conversations').get();
-    for (const convDoc of convSnapshot.docs) {
-      const msgsSnapshot = await convDoc.ref.collection('messages').get();
-      const batch = this.db.batch();
-      msgsSnapshot.docs.forEach((msg) => batch.delete(msg.ref));
-      await batch.commit();
-      await convDoc.ref.delete();
-    }
-    deletedCollections.push('conversations');
-
-    // 3. Delete spot journal nested entries
-    const spotSnapshot = await this.db.collection('users').doc(userId).collection('spotJournals').get();
-    for (const spotDoc of spotSnapshot.docs) {
-      const entriesSnapshot = await spotDoc.ref.collection('entries').get();
-      const batch = this.db.batch();
-      entriesSnapshot.docs.forEach((e) => batch.delete(e.ref));
-      await batch.commit();
-      await spotDoc.ref.delete();
-    }
-
-    // 4. Delete user profile root document
-    await this.db.collection('users').doc(userId).delete();
-    deletedCollections.push('users_profile');
-
-    // 5. Delete all user Cloud Storage skin photos (Data Minimization & Right to Erasure)
-    const storagePrefixes = [
+  /** Erase account data and Auth, then start the stale-token guard's TTL. */
+  async deleteUserAccount(userId: string): Promise<{ deleted: boolean; deletedCollections: string[] }> {
+    if (!/^[A-Za-z0-9:_-]{1,128}$/.test(userId)) throw new Error('Invalid account ID');
+    const bucket = this.storage.bucket();
+    const prefixes = [
       `transient-scans/${userId}/`,
       `progress-photos/${userId}/`,
       `spot-journal/${userId}/`
     ];
 
-    const bucket = this.storage.bucket();
-    for (const prefix of storagePrefixes) {
-      try {
-        await bucket.deleteFiles({ prefix, force: true });
-      } catch (err: any) {
-        console.warn(`[AccountDeletion] Storage cleanup note for ${prefix}: ${err.message}`);
-      }
+    // A storage failure must keep the account available for a safe retry.
+    for (const prefix of prefixes) {
+      await bucket.deleteFiles({ prefix, force: true });
     }
 
-    return { deleted: true, deletedCollections };
+    // The guard has no TTL until every cleanup step and Auth deletion succeed.
+    // It blocks stale ID tokens and delayed RevenueCat webhooks throughout a
+    // partial failure, and retries replace any legacy expiring guard.
+    const guard = this.db.collection('accountDeletionGuards').doc(userId);
+    const profile = this.db.collection('users').doc(userId);
+    const entitlement = profile.collection('entitlements').doc('pro');
+    await this.db.runTransaction(async (transaction) => {
+      const existing = await transaction.get(guard);
+      const state = existing.get('state');
+      // A concurrent/retried request cannot regress a cleanup-complete guard
+      // to `deleting`, or remove a TTL added after another request succeeded.
+      if (!existing.exists || (state !== 'awaiting-auth' && state !== 'completed')) {
+        transaction.set(guard, {
+          state: 'deleting',
+          startedAt: admin.firestore.FieldValue.serverTimestamp(),
+          nextCheckAt: admin.firestore.Timestamp.now()
+        });
+      }
+      transaction.set(profile, { deletionStatus: 'deleting' }, { merge: true });
+      // Revoking this document in the same commit closes paid client access
+      // before recursiveDelete begins.
+      transaction.delete(entitlement);
+    });
+
+    // recursiveDelete includes nested journal entries and conversation messages.
+    await this.db.recursiveDelete(profile);
+    await this.db.collection('entitlements').doc(userId).delete();
+    await this.db.collection('usage').doc(userId).delete();
+
+    // Only this state certifies that all application data was removed. The
+    // scheduled finalizer must never expire a guard left by partial cleanup.
+    await this.db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(guard);
+      if (!snapshot.exists) throw new Error('Deletion guard missing after cleanup');
+      if (snapshot.get('state') === 'deleting') {
+        transaction.update(guard, { state: 'awaiting-auth' });
+      }
+    });
+
+    // A retry can observe an already-deleted Auth user after the earlier
+    // invocation completed Auth deletion but failed to finalize the guard.
+    try {
+      await this.auth.deleteUser(userId);
+    } catch (error) {
+      if (!isAuthUserNotFound(error)) throw error;
+    }
+
+    // Confirm Auth is absent before adding a TTL. If this update fails, the
+    // guard remains non-expiring; the scheduled finalizer can safely retry it.
+    if (!await this.finalizeGuardForMissingAuth(userId)) {
+      throw new Error('Account still exists after Auth deletion');
+    }
+    return {
+      deleted: true,
+      deletedCollections: ['users', 'entitlements', 'usage', 'transient-scans', 'progress-photos', 'spot-journal']
+    };
   }
+
+  /** Finalize only a guard whose Auth account is definitively absent. */
+  async finalizeGuardForMissingAuth(userId: string): Promise<boolean> {
+    try {
+      await this.auth.getUser(userId);
+      return false;
+    } catch (error) {
+      if (!isAuthUserNotFound(error)) throw error;
+    }
+
+    const guard = this.db.collection('accountDeletionGuards').doc(userId);
+    return this.db.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(guard);
+      if (!snapshot.exists) return false;
+      if (snapshot.get('state') === 'completed') return true;
+      if (snapshot.get('state') !== 'awaiting-auth') return false;
+      transaction.update(guard, {
+        state: 'completed',
+        expireAt: admin.firestore.Timestamp.fromMillis(Date.now() + 2 * 60 * 60 * 1000),
+        nextCheckAt: admin.firestore.FieldValue.delete()
+      });
+      return true;
+    });
+  }
+}
+
+function isAuthUserNotFound(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    'code' in error && error.code === 'auth/user-not-found';
 }

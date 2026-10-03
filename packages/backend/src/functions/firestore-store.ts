@@ -1,6 +1,7 @@
 import * as admin from 'firebase-admin';
 import { ScanSession, NormalizedSkinAnalysis } from '@asmr/shared';
 import { ScanStore, UserSubscriptionEntitlement, UserScanQuota } from '../services/scan-state-machine.js';
+import { RevenueCatVerifier } from '../services/revenuecat-verifier.js';
 
 export class FirestoreScanStore implements ScanStore {
   private db: admin.firestore.Firestore;
@@ -47,16 +48,7 @@ export class FirestoreScanStore implements ScanStore {
   }
 
   async getEntitlement(userId: string): Promise<UserSubscriptionEntitlement> {
-    const doc = await this.db.collection('users').doc(userId).collection('entitlements').doc('pro').get();
-    if (!doc.exists) {
-      return { isPro: false, status: 'expired', tier: 'FREE' };
-    }
-    const data = doc.data() || {};
-    return {
-      isPro: Boolean(data.isPro && (data.status === 'active' || data.status === 'grace_period')),
-      status: data.status || 'expired',
-      tier: data.tier || 'PRO'
-    };
+    return new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(userId);
   }
 
   async getQuota(userId: string): Promise<UserScanQuota> {

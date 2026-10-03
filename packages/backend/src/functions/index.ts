@@ -1,13 +1,9 @@
 import * as admin from 'firebase-admin';
 import { onRequest, onCall, HttpsError } from 'firebase-functions/v2/https';
-import { GeminiSkinAnalysisProvider } from '../providers/skin/gemini-skin.provider.js';
-import { GeminiProvider } from '../providers/ai/gemini.provider.js';
-import { ScanStateMachine } from '../services/scan-state-machine.js';
-import { FirestoreScanStore } from './firestore-store.js';
-import { CoachReasoningContext } from '../providers/ai/base.provider.js';
-import { AffiliateResolverService } from '../services/affiliate-resolver.js';
+import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { AccountDeletionService } from '../services/account-deletion.service.js';
-import { SkinAnalysisInputImage, StandardizedCropType } from '@asmr/shared';
+import { RevenueCatVerifier } from '../services/revenuecat-verifier.js';
+import { VerifiedEntitlementStore } from '../services/verified-entitlement-store.js';
 
 if (admin.apps.length === 0) {
   admin.initializeApp();
@@ -16,9 +12,8 @@ if (admin.apps.length === 0) {
 const db = admin.firestore();
 db.settings({ ignoreUndefinedProperties: true });
 const storage = admin.storage();
-const store = new FirestoreScanStore(db, storage);
-const affiliateService = new AffiliateResolverService(db);
-const deletionService = new AccountDeletionService(db, storage);
+const deletionService = new AccountDeletionService(db, storage, admin.auth());
+const entitlementStore = new VerifiedEntitlementStore(db, admin.auth());
 
 /**
  * 1. RevenueCat Server-to-Server Webhook Handler
@@ -26,12 +21,20 @@ const deletionService = new AccountDeletionService(db, storage);
  * Client state is NEVER trusted for subscription gating.
  */
 export const onRevenueCatWebhook = onRequest(
-  { secrets: ['REVENUECAT_WEBHOOK_TOKEN'] },
+  { secrets: ['REVENUECAT_WEBHOOK_TOKEN', 'REVENUECAT_SECRET_API_KEY'] },
   async (req, res) => {
+    if (req.method !== 'POST') {
+      res.status(405).send('Method not allowed.');
+      return;
+    }
     const authHeader = req.headers.authorization;
     const expectedToken = process.env.REVENUECAT_WEBHOOK_TOKEN;
 
-    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+    if (!expectedToken) {
+      res.status(503).send('Webhook authentication is not configured.');
+      return;
+    }
+    if (authHeader !== `Bearer ${expectedToken}`) {
       res.status(401).send('Unauthorized webhook signature.');
       return;
     }
@@ -42,231 +45,133 @@ export const onRevenueCatWebhook = onRequest(
       return;
     }
 
-    const eventType = event.type; // e.g. TEST, INITIAL_PURCHASE, RENEWAL, CANCELLATION, EXPIRATION
+    const eventType = event.type;
     if (eventType === 'TEST') {
       res.status(200).json({ received: true, test: true });
       return;
     }
 
-    const userId = event.app_user_id || 'unknown';
-    const entitlementIds = event.entitlement_ids || [];
-    const isPro = entitlementIds.includes('pro_access') || entitlementIds.includes('asmr_beaty_pro_pro');
-
-    const statusMap: Record<string, string> = {
-      INITIAL_PURCHASE: 'active',
-      RENEWAL: 'active',
-      PRODUCT_CHANGE: 'active',
-      CANCELLATION: 'canceled',
-      EXPIRATION: 'expired',
-      BILLING_ISSUE: 'billing_retry'
-    };
-
-    const status = statusMap[eventType] || (isPro ? 'active' : 'expired');
-
-    await db
-      .collection('users')
-      .doc(userId)
-      .collection('entitlements')
-      .doc('pro')
-      .set(
-        {
-          isPro: status === 'active' || status === 'canceled', // Canceled retains access until period ends
-          status,
-          tier: event.product_id?.includes('annual') ? 'PRO_ANNUAL' : 'PRO_MONTHLY',
-          productId: event.product_id || null,
-          expiresAtMs: event.expiration_at_ms || null,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        },
-        { merge: true }
-      );
+    const userId = event.app_user_id;
+    if (typeof userId !== 'string' || !userId || userId.includes('/') || userId.length > 128) {
+      res.status(400).send('Invalid app user ID.');
+      return;
+    }
+    try {
+      // The event may be delayed or arrive out of order. Always reconcile with
+      // RevenueCat's current subscription state rather than trusting its type.
+      const verified = await new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(userId);
+      await entitlementStore.cache(userId, verified, eventType);
+    } catch (error) {
+      console.error('[Billing] Webhook reconciliation failed:', error);
+      res.status(503).send('Subscription verification unavailable.');
+      return;
+    }
 
     res.status(200).json({ received: true });
   }
 );
 
-/**
- * 2. Process Skin Scan Session (Gemini 3.8 Flash Production Scanner)
- * Enforces all 7 security gates (Auth, App Check, Ownership, Server Entitlement, Quota, Idempotency, Rate Limit)
- * before invoking Gemini 3.8 Flash with structured JSON output and rubrics.
- */
-export const processSkinScanSession = onCall(
-  {
-    secrets: ['GEMINI_API_KEY'],
-    enforceAppCheck: false // Set to true after rolling out App Check production tokens
-  },
+/** Verify the current RevenueCat entitlement for the authenticated Firebase user. */
+export const verifySubscriptionAccess = onCall(
+  { secrets: ['REVENUECAT_SECRET_API_KEY'], enforceAppCheck: true },
   async (request) => {
     if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'User must be authenticated to process skin scan.');
+      throw new HttpsError('unauthenticated', 'Sign in to verify subscription access.');
     }
-
-    const { scanId, idempotencyKey, storagePath, cropPaths } = request.data;
-    if (!scanId || !idempotencyKey || (!storagePath && !cropPaths)) {
-      throw new HttpsError('invalid-argument', 'Missing scan session parameters.');
+    if (request.auth.token.email_verified !== true) {
+      throw new HttpsError('permission-denied', 'Verify your email before accessing a membership.');
     }
-
-    const provider = new GeminiSkinAnalysisProvider({
-      apiKey: process.env.GEMINI_API_KEY
-    });
-
-    const stateMachine = new ScanStateMachine(provider, store);
-    const bucket = storage.bucket();
-
-    // Prepare image input (single frontal or standardized multiple crops)
-    const images: SkinAnalysisInputImage[] = [];
-
-    if (cropPaths && typeof cropPaths === 'object') {
-      for (const [cropType, path] of Object.entries(cropPaths)) {
-        if (typeof path === 'string') {
-          const file = bucket.file(path);
-          const [exists] = await file.exists();
-          if (exists) {
-            const [buf] = await file.download();
-            images.push({
-              type: cropType as StandardizedCropType,
-              buffer: buf,
-              mimeType: 'image/jpeg',
-              storagePath: path
-            });
-          }
-        }
-      }
-      if (storagePath && !cropPaths['FULL_FRONT']) {
-        const file = bucket.file(storagePath);
-        const [exists] = await file.exists();
-        if (exists) {
-          const [buf] = await file.download();
-          images.unshift({
-            type: 'FULL_FRONT',
-            buffer: buf,
-            mimeType: 'image/jpeg',
-            storagePath
-          });
-        }
-      }
-    } else if (storagePath) {
-      const file = bucket.file(storagePath);
-      const [exists] = await file.exists();
-      if (!exists) {
-        throw new HttpsError('not-found', 'Uploaded skin scan image not found in storage.');
-      }
-      const [imageBuffer] = await file.download();
-      images.push({
-        type: 'FULL_FRONT',
-        buffer: imageBuffer,
-        mimeType: 'image/jpeg',
-        storagePath
-      });
-    }
-
-    if (images.length === 0) {
-      throw new HttpsError('invalid-argument', 'No readable scan images available for processing.');
-    }
-
     try {
-      const result = await stateMachine.processScan(scanId, images, {
-        authenticatedUserId: request.auth.uid,
-        appCheckVerified: Boolean(request.app),
-        rateLimitPassed: true
-      });
-      return result;
-    } catch (err: any) {
-      if (err.message.includes('SUBSCRIPTION_REQUIRED')) {
-        throw new HttpsError('permission-denied', 'Active subscription required for cloud skin snapshot.');
+      const verified = await new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(request.auth.uid);
+      if (!await entitlementStore.cache(request.auth.uid, verified)) {
+        throw new HttpsError('failed-precondition', 'This account is unavailable.');
       }
-      if (err.message.includes('SCAN_QUOTA_EXCEEDED') || err.message.includes('SCAN_COOLDOWN_ACTIVE')) {
-        throw new HttpsError('resource-exhausted', 'Weekly skin snapshot quota reached. Next scan available next week.');
-      }
-      throw new HttpsError('internal', err.message);
+      return verified;
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      console.error('[Billing] Subscription verification unavailable:', error);
+      throw new HttpsError('unavailable', 'Subscription verification is temporarily unavailable.');
     }
   }
 );
 
 /**
- * 3. Chat With AI Skin Coach (Gemini 3.8 Flash Grounded Inference)
- * Grounded strictly in structured scan metrics and pre-filtered allowed products.
- * Never resends raw selfies.
+ * 2. Skin analysis remains unavailable until independent accuracy and bias
+ * validation supports consumer-facing results.
  */
-export const chatWithSkinCoach = onCall(
-  { secrets: ['GEMINI_API_KEY'] },
-  async (request) => {
-    if (!request.auth) {
-      throw new HttpsError('unauthenticated', 'User must be authenticated to consult skin coach.');
-    }
-
-    const {
-      userMessage,
-      currentRoutineSummary,
-      latestSkinSnapshotSummary,
-      memorySummary,
-      allowedCandidateProductIds,
-      allowedCandidateDescriptions
-    } = request.data;
-
-    const gemini = new GeminiProvider({
-      apiKey: process.env.GEMINI_API_KEY
-    });
-
-    const context: CoachReasoningContext = {
-      userId: request.auth.uid,
-      userMessage: userMessage || '',
-      memorySummary: memorySummary || {
-        userId: request.auth.uid,
-        skinTypeObservation: 'balanced',
-        userGoalsSummary: 'Maintain calm, clear skin',
-        sensitivitiesSummary: 'None reported',
-        routineAdherenceSummary: 'High adherence',
-        productReactionHistory: [],
-        lastUpdated: new Date().toISOString()
-      },
-      currentRoutineSummary: currentRoutineSummary || 'Gentle cleanser, moisturizer, mineral SPF',
-      latestSkinSnapshotSummary: latestSkinSnapshotSummary || 'Baseline redness and surface hydration balanced',
-      allowedCandidateProductIds: allowedCandidateProductIds || [],
-      allowedCandidateDescriptions: allowedCandidateDescriptions || []
-    };
-
-    const response = await gemini.generateCoachResponse(context);
-    return response;
-  }
-);
-
-/**
- * 4. Resolve Affiliate Offer (Phishing & Domain Allowlist Protection)
- * Resolves internal offerId into validated destination URL with disclosure text.
- */
-export const resolveAffiliateOffer = onCall(async (request) => {
-  if (!request.auth) {
-    throw new HttpsError('unauthenticated', 'Authentication required to access partner recommendations.');
-  }
-
-  const { offerId } = request.data;
-  if (!offerId) {
-    throw new HttpsError('invalid-argument', 'Missing offerId.');
-  }
-
-  try {
-    const result = await affiliateService.resolveOfferUrl(offerId, request.auth.uid);
-    return result;
-  } catch (err: any) {
-    throw new HttpsError('invalid-argument', err.message);
-  }
+export const processSkinScanSession = onCall({ enforceAppCheck: true, secrets: [] }, async () => {
+  throw new HttpsError('failed-precondition', 'Skin analysis is not available in this release.');
 });
 
-/**
- * 5. Delete User Account (GDPR & App Store Compliance)
- * Completely deletes all private user data, skin scans, photos, routines, and memory.
- */
-export const deleteUserAccount = onCall(async (request) => {
+/** Legacy AI coaching is unavailable in this routine-only release. */
+export const chatWithSkinCoach = onCall({ enforceAppCheck: true, secrets: [] }, async () => {
+  throw new HttpsError('failed-precondition', 'Skin coach is unavailable while safety validation is in progress.');
+});
+
+/** Legacy affiliate resolution is disabled until the product catalog is live. */
+export const resolveAffiliateOffer = onCall({ enforceAppCheck: true }, async () => {
+  throw new HttpsError('failed-precondition', 'Partner offers are not available in this release.');
+});
+
+/** Remove a user's cloud records and Firebase account. */
+export const deleteUserAccount = onCall({ enforceAppCheck: true }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentication required for account deletion.');
   }
 
   const userId = request.auth.uid;
   try {
-    const result = await deletionService.deleteUserAccountData(userId);
-    // Delete Firebase Auth user record
-    await admin.auth().deleteUser(userId);
-    return result;
-  } catch (err: any) {
-    throw new HttpsError('internal', `Failed to delete account: ${err.message}`);
+    return await deletionService.deleteUserAccount(userId);
+  } catch (error) {
+    console.error('[AccountDeletion] Request failed.', {
+      errorName: error instanceof Error ? error.name : 'UnknownError'
+    });
+    throw new HttpsError('internal', 'Account deletion could not be completed. Please try again.');
   }
 });
+
+/**
+ * Recover a guard if Auth was deleted but the final TTL update failed. Only
+ * guards marked after full cleanup are eligible; existing Auth users retain
+ * their non-expiring guard for a caller-initiated retry.
+ */
+export const finalizeDeletedAccountGuards = onSchedule(
+  { schedule: 'every 1 hours', timeZone: 'Etc/UTC', timeoutSeconds: 300, maxInstances: 1 },
+  async () => {
+    const due = await db.collection('accountDeletionGuards')
+      .where('state', '==', 'awaiting-auth')
+      .where('nextCheckAt', '<=', admin.firestore.Timestamp.now())
+      .orderBy('nextCheckAt')
+      .limit(100)
+      .get();
+    let finalized = 0;
+    let retained = 0;
+    let failed = 0;
+    for (const guard of due.docs) {
+      try {
+        if (await deletionService.finalizeGuardForMissingAuth(guard.id)) {
+          finalized += 1;
+        } else {
+          // Rotate active accounts out of the due set so another guard cannot
+          // be starved by repeated checks of the same incomplete deletion.
+          await guard.ref.update({
+            nextCheckAt: admin.firestore.Timestamp.fromMillis(Date.now() + 2 * 60 * 60 * 1000)
+          });
+          retained += 1;
+        }
+      } catch {
+        failed += 1;
+        // A transient Auth or Firestore failure must never set a TTL. Leave
+        // the guard intact and retry later; rotate it out of this due batch.
+        try {
+          await guard.ref.update({
+            nextCheckAt: admin.firestore.Timestamp.fromMillis(Date.now() + 60 * 60 * 1000)
+          });
+        } catch {
+          // If Firestore is also unavailable, the next invocation will retry.
+        }
+      }
+    }
+    console.info('[AccountDeletion] Guard check complete.', { finalized, retained, failed });
+  }
+);
