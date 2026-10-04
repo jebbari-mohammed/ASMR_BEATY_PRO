@@ -1,6 +1,6 @@
 # ASMR Beauty Pro release checklist
 
-This checklist records the current release status for the **routine, calendar, shelf, reminder, and daily check-in** app, including personalized onboarding and the explicit ten-day free access period. The deployed controls and remaining security evidence are in [security.md](security.md). Scan, AI coach, photo journal, product scoring, and affiliate offers are excluded.
+This checklist records the current release status for the **routine, calendar, shelf, reminder, and daily check-in** app, including personalized onboarding and the explicit ten-day free access period. The deployed controls and remaining security evidence are in [security.md](security.md). The new owner-only candidate also adds optional editorial retailer links in My Shelf. Scan, AI coach, photo journal, product scoring, and commissioned affiliate offers are excluded.
 
 ## Firebase deployment and remaining release gates
 
@@ -29,6 +29,8 @@ This checklist records the current release status for the **routine, calendar, s
 
 ## Product and operations
 
+- [x] Deploy `getProductDiscovery` on October 3 Pacific time. It requires App Check and a verified account, accepts no personal filters, and serves five checked direct Ulta product pages with `isCommissioned: false`. An unauthenticated live request returned 401; the admin catalog import dry-run validated five products and zero commissioned links. The old fake catalog and UID-derived affiliate URL generator were removed. See [product-discovery-operations.md](product-discovery-operations.md). No partner program approval or commission is active.
+- [ ] On both final owner-only signed builds, open and dismiss My Shelf’s optional product section; verify the five live links, an external retailer destination, error retry, and account-switch reset. Before any commissioned link goes live, obtain an approved partner URL, verify its final product destination, confirm the adjacent disclosure and applicable store privacy declarations, and repeat device QA. Shopping is never needed for a routine.
 - [ ] Test first run, routine edit, daily completion, calendar, shelf, reminders, sign-out, and account deletion on real small and large phones.
 - [ ] Run VoiceOver and TalkBack, dynamic type, color contrast, and touch target checks.
 - [ ] Replace the older Play onboarding screenshots and publish truthful screenshots from the final signed builds, with no people and no unshipped AI or photo claims. Capture subscribed Today, Routine, Progress, and Shelf screens after physical-device billing checks.
