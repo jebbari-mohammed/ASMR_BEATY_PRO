@@ -1,6 +1,6 @@
 # ASMR Beauty Pro release checklist
 
-The live release status and evidence are in [release-readiness.md](release-readiness.md). This checklist applies to the **routine, calendar, shelf, and reminder** release. Scan, AI coach, photo journal, product scoring, and affiliate offers are excluded.
+This checklist records the current release status for the **routine, calendar, shelf, and reminder** app. The deployed controls and remaining security evidence are in [security.md](security.md). Scan, AI coach, photo journal, product scoring, and affiliate offers are excluded.
 
 ## Firebase deployment and remaining release gates
 
@@ -28,14 +28,14 @@ The live release status and evidence are in [release-readiness.md](release-readi
 - [ ] Test first run, routine edit, daily completion, calendar, shelf, reminders, sign-out, and account deletion on real small and large phones.
 - [ ] Run VoiceOver and TalkBack, dynamic type, color contrast, and touch target checks.
 - [ ] Publish truthful store screenshots with no people and no unshipped AI or photo claims.
-- [x] Replace the App Store annual subscription description, complete monthly and group localization, and enable both products in the 175 configured regions at the existing prices. Use [saved store copy](store-metadata.md).
+- [x] Replace the App Store annual subscription description, complete monthly and group localization, and enable both products in the 175 configured regions at the existing prices. The copy is saved in App Store Connect.
 - [ ] Add review screenshots and submit the first subscription group with the app version after signed build and billing tests.
 - [x] Publish the App Store privacy label for the actual binary and save public privacy, support, and marketing URLs.
 - [x] Complete and save the Play Data safety form as a draft, including the live account-deletion URL. Submission awaits target audience, content rating, and reviewer access details.
 - [ ] Complete the remaining Play content declarations and send the saved changes for review after release testing and owner approval.
 - [x] Produce a signed Android release App Bundle with the registered Google Play upload certificate; verify its identity, manifest, and archive integrity.
 - [x] Produce a signed iOS App Store IPA with the verified Apple Distribution certificate and profile; verify signature, entitlements, version, and archive integrity.
-- [x] Upload corrected signed iOS build 7 through Transporter and add it to the one-person owner-only internal TestFlight group. App Store Connect finished processing `1.0.1 (7)` and shows it In Testing. Broken build 6 was removed from the group.
-- [x] Publish signed Android code 8 App Bundle to the owner-only Play internal-test list. The validation preview had only an optional missing-deobfuscation-file warning because release minification is disabled.
+- [x] Upload signed iOS build `1.0.1 (8)` through Transporter and add it to the one-person owner-only internal TestFlight group. App Store Connect shows it In Testing. Build 8 contains the recent-login and account-deletion fixes from source commit `42cff15`.
+- [x] Publish signed Android `1.0.1 (9)` App Bundle to the owner-only Play internal-test list. Code 9 contains the same mobile fixes. The only Play warning concerns an optional deobfuscation file; release minification is disabled.
 - [x] Complete iOS and Android simulator QA for the paid routine, calendar, shelf, reminders, paywall, and account flows. The signed Android APK also passed offline-launch and pre-purchase smoke tests.
-- [ ] Run TestFlight and Play closed testing, assign support and rollback owners, and stage the public rollout.
+- [ ] Install TestFlight build 8 and Play internal code 9 on physical devices. Verify App Check, sign-in, email verification, paid access, purchase and restore, routine data, sign-out, and fresh-password account deletion using disposable accounts. Then assign support and rollback owners and stage the public rollout.

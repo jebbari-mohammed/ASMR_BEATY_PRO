@@ -30,9 +30,9 @@ At the initial audit, the repository had an Expo/React Native app, Firebase Func
 
 Work started after the initial audit. The mobile app removes the legacy locally granted entitlement and refuses to synthesize a skin score from a photo URI. Firebase email accounts, App Check initialization, account-bound RevenueCat identity, a hard paywall using store-localized offerings, backend subscription verification, account deletion, cloud-backed routine logs, a real consistency calendar, and a manual product shelf are implemented. Scan and coach remain unavailable until their accuracy and safety gates pass. The old canned coach responses and synthetic default scan result have been removed from the source. The visible paid experience has four tabs: Today, Routine, Progress, and Shelf.
 
-The app has been upgraded from Expo SDK 52 to SDK 57. Expo Doctor passes 21/21 checks after aligning Expo Router, Expo Constants, and React. iOS and Android simulator QA passed for the current paid feature set and value-first onboarding. Corrected signed iOS build 7 is In Testing in the one-person owner TestFlight group; Android code 8 is the latest owner-only Play internal release. The old Android folder is preserved at `/Users/Apple/Desktop/ASMR-BEAUTY-ANDROID-SDK52-BACKUP-20260927`. Firebase and the legal site are live. The iOS build uses a replacement Apple Distribution certificate, EAS production environment variables, and a build-time guard for purchase keys. Physical-device store sandbox testing, complete store screenshots and reviewer access, and operational checks remain before public release. The current evidence is in [release-readiness.md](release-readiness.md).
+The app has been upgraded from Expo SDK 52 to SDK 57. Expo Doctor passes 21/21 checks after aligning Expo Router, Expo Constants, and React. iOS and Android simulator QA passed for the current paid feature set and value-first onboarding. Signed iOS build `1.0.1 (8)` is In Testing in the one-person owner TestFlight group; signed Android `1.0.1 (9)` is the latest owner-only Play internal release. Both include the current mobile account-deletion security fixes. The old Android folder is preserved at `/Users/Apple/Desktop/ASMR-BEAUTY-ANDROID-SDK52-BACKUP-20260927`. Firebase and the legal site are live. The iOS build uses a replacement Apple Distribution certificate, EAS production environment variables, and a build-time guard for purchase keys. Physical-device store sandbox testing, complete store screenshots and reviewer access, and operational checks remain before public release. The current gates are in [release-checklist.md](release-checklist.md).
 
-A later whole-workspace dependency audit found high advisories, many through Expo/Metro tooling; backend runtime risks need separate triage. A passing TypeScript build does not settle the release gate.
+A later whole-workspace dependency audit found high advisories, many through Expo/Metro tooling. The deployed backend now has a standalone lockfile and a clean production install audit with zero high or critical findings; nine moderate transitive `uuid` advisory entries remain documented in [security.md](security.md). A passing TypeScript build does not settle the device or billing release gates.
 
 ## Premium design direction
 
@@ -101,7 +101,7 @@ All are mandatory before public release:
 
 ## External reference notes
 
-The free screen-library comparison and screen-by-screen visual brief are in [design-references.md](design-references.md).
+The earlier screen-library comparison and visual brief informed the premium design direction above.
 
 - [Skin Bliss App Store page](https://apps.apple.com/us/app/skin-bliss-skincare-routines/id1385561364): face scan, routine builder/player, skin diary, product analysis, and tracking.
 - [FaceYogi App Store page](https://apps.apple.com/us/app/faceyogi-face-yoga-massage/id1551099110): short guided programs, diary and motivation. Its promotional outcome claims are not adopted here.

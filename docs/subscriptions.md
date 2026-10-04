@@ -30,4 +30,4 @@ If packages cannot load, the paywall remains closed and offers retry, restore, a
 - Verify purchase, restore, cancellation, expiration, refund, grace period, reinstall, account switch, and displayed localized prices on both stores with the deployed backend.
 - The RevenueCat webhook destination and server secret were confirmed after deployment. Never put server secrets in the mobile bundle.
 
-See [release-readiness.md](release-readiness.md) for the current verification record.
+See [release-checklist.md](release-checklist.md) for the current verification gates.

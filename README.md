@@ -44,4 +44,4 @@ For native checks, run `npx expo prebuild --platform all`, then the normal Andro
 
 The mobile app needs Firebase service configuration files and platform-specific `EXPO_PUBLIC_RC_APPLE_API_KEY` / `EXPO_PUBLIC_RC_GOOGLE_API_KEY` values. Firebase Functions need `REVENUECAT_SECRET_API_KEY` and `REVENUECAT_WEBHOOK_TOKEN` secrets. RevenueCat's entitlement identifier is `asmr_beaty_pro_pro`.
 
-See [production-plan.md](docs/production-plan.md), [release-readiness.md](docs/release-readiness.md), and [growth-plan.md](docs/growth-plan.md) for the remaining device, store, and commercial validation gates. A successful local build does not by itself authorize a public launch.
+See [release-checklist.md](docs/release-checklist.md), [security.md](docs/security.md), and [operations.md](docs/operations.md) for the remaining device, store, security, and rollout gates. A successful local build does not by itself authorize a public launch.
