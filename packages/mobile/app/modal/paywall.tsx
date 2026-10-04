@@ -8,7 +8,7 @@ import type { PurchasesPackage } from 'react-native-purchases';
 import auth from '@react-native-firebase/auth';
 import { localImages } from '../../src/theme/images';
 import { colors } from '../../src/theme/tokens';
-import { FreeTrialStatus, PurchaseVerificationPendingError, SubscriptionService } from '../../src/services/subscription-service';
+import { BillingPolicy, FreeTrialStatus, PurchaseVerificationPendingError, SubscriptionService } from '../../src/services/subscription-service';
 import { useAccess } from '../../src/services/access-context';
 import { EditorialStatusBackdrop } from '../../src/components/EditorialStatusBackdrop';
 import { OnboardingService } from '../../src/services/onboarding-machine';
@@ -38,9 +38,8 @@ export default function PaywallScreen() {
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
   const [freeTrials, setFreeTrials] = useState<Record<string, string>>({});
   const [appTrial, setAppTrial] = useState<FreeTrialStatus | null>(null);
+  const [billingPolicy, setBillingPolicy] = useState<BillingPolicy | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const [purchaseIntent, setPurchaseIntent] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [storeLoading, setStoreLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,9 +55,7 @@ export default function PaywallScreen() {
     const requestedForUid = auth().currentUser?.uid;
     const requestId = ++loadId.current;
     const isCurrent = () => loadId.current === requestId && auth().currentUser?.uid === requestedForUid;
-    setLoading(true);
     setStoreLoading(true);
-    setPurchaseIntent(false);
     setError(null);
     setStoreError(null);
     const statusTask = SubscriptionService.getFreeTrialStatus().then(status => {
@@ -67,24 +64,28 @@ export default function PaywallScreen() {
     }).catch(() => {
       if (!isCurrent()) return;
       setAppTrial(null);
-      setError('Free access could not be checked. Reload to try again.');
-    }).finally(() => {
-      if (isCurrent()) setLoading(false);
+      // A legacy lease check must not hide available store plans.
     });
-    const storeTask = SubscriptionService.getStorePackages().then(async available => {
+    const storeTask = SubscriptionService.getBillingPolicy().then(async policy => {
+      if (!isCurrent()) return;
+      setBillingPolicy(policy);
+      const available = await SubscriptionService.getStorePackages(policy);
       if (!isCurrent()) return;
       setPackages(available);
       setFreeTrials({});
       const annual = available.find((pkg) => pkg.packageType === 'ANNUAL');
       setSelected((current) => current && available.some((pkg) => pkg.identifier === current) ? current : (annual ?? available[0])?.identifier ?? null);
       if (!available.length) setStoreError('Subscription plans are unavailable in the store right now. Please try again later.');
-      setStoreLoading(false);
-      const periods = await SubscriptionService.getFreeTrialPeriods(available).catch(() => ({}));
-      if (isCurrent()) setFreeTrials(periods);
+      const periods: Record<string, string> = policy.trialEnabled ? await SubscriptionService.getFreeTrialPeriods(available).catch(() => ({})) : {};
+      if (isCurrent()) {
+        setFreeTrials(Object.fromEntries(Object.entries(periods).filter(([, period]) => period === 'P2W')));
+        setStoreLoading(false);
+      }
     }).catch(() => {
       if (!isCurrent()) return;
       setPackages([]);
       setFreeTrials({});
+      setBillingPolicy(null);
       setStoreError('Store plans are unavailable on this device right now. Check your store account or connection, then reload.');
       setStoreLoading(false);
     });
@@ -113,9 +114,7 @@ export default function PaywallScreen() {
 
   const plan = packages.find((item) => item.identifier === selected);
   const selectedTrial = plan ? trialPeriodLabel(freeTrials[plan.identifier] ?? null) : null;
-  const canStartAppTrial = appTrial?.eligible === true;
-  const freeAccessIsPrimary = canStartAppTrial && !purchaseNeedsRestore && (!purchaseIntent || !plan);
-  const showPlanSelection = !canStartAppTrial || purchaseIntent || purchaseNeedsRestore;
+  const hasStoreTrial = billingPolicy?.trialEnabled === true && Object.values(freeTrials).includes('P2W');
   const activeAppTrial = appTrial?.active === true;
   const completedAppTrial = appTrial?.eligible === false && appTrial.active === false && !!appTrial.endsAt;
   const annual = packages.find((item) => item.packageType === 'ANNUAL');
@@ -130,38 +129,14 @@ export default function PaywallScreen() {
     setBusy(true);
     setError(null);
     try {
-      await SubscriptionService.purchasePlan(plan.identifier);
+      await SubscriptionService.purchasePlan(plan.identifier, plan.product.identifier,
+        freeTrials[plan.identifier] === 'P2W' && plan.product.subscriptionOptions ? 'annual:trial-14d' : null);
       await refresh();
       router.replace('/(tabs)/today');
     } catch (cause: any) {
       if (cause?.userCancelled || String(cause?.message).toLowerCase().includes('cancelled')) return;
       if (cause instanceof PurchaseVerificationPendingError) setPurchaseNeedsRestore(true);
       setError(cause instanceof Error ? cause.message : 'Could not complete purchase.');
-    } finally { setBusy(false); }
-  }
-
-  async function startFreeAccess() {
-    if (!canStartAppTrial || busy) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const started = await SubscriptionService.startFreeTrial();
-      setAppTrial(started);
-      await refresh();
-      router.replace('/(tabs)/today');
-    } catch (cause) {
-      try {
-        const status = await SubscriptionService.getFreeTrialStatus();
-        setAppTrial(status);
-        if (status.active) {
-          await refresh();
-          router.replace('/(tabs)/today');
-        } else {
-          setError(cause instanceof Error ? cause.message : 'Could not start free access. Please try again.');
-        }
-      } catch {
-        setError('We could not confirm whether your ten days started. Reload access and plans before trying again.');
-      }
     } finally { setBusy(false); }
   }
 
@@ -202,7 +177,7 @@ export default function PaywallScreen() {
           <LinearGradient colors={['rgba(17,34,25,0.89)', 'rgba(17,34,25,0.34)', 'rgba(17,34,25,0.05)']} style={styles.heroShade}>
             <Text style={styles.brand}>ASMR BEAUTY  /  YOUR PRIVATE RITUAL</Text>
             <Text style={styles.headline}>A small ritual. A place to return.</Text>
-            <Text style={styles.heroCopy}>{starterPlan ? canStartAppTrial ? 'Your plan is ready. Give it ten real days in your routine.' : 'Your plan is ready. Make it part of your actual day.' : canStartAppTrial ? 'Make a gentle ritual your own for ten real days.' : 'Make a gentle ritual part of your actual day.'}</Text>
+            <Text style={styles.heroCopy}>{starterPlan ? 'Your plan is ready. Make it part of your actual day.' : 'Make a gentle ritual part of your actual day.'}</Text>
           </LinearGradient>
         </ImageBackground>
         <View style={styles.body}>
@@ -217,10 +192,10 @@ export default function PaywallScreen() {
             <View style={styles.weekPromise}><Ionicons name="calendar-outline" size={17} color={colors.primary} /><Text style={styles.weekPromiseText}>Your first-week path is ready to follow inside.</Text></View>
           </View>}
           <Text style={styles.valueLine}>Everything you need to keep showing up for your skin, in one quiet place.</Text>
-          {canStartAppTrial && <View style={styles.freeAccessCard}>
-            <Text style={styles.freeAccessEyebrow}>TEN DAYS TO MAKE IT YOURS</Text>
-            <Text style={styles.freeAccessTitle}>Try the full ritual, free.</Text>
-            <Text style={styles.freeAccessCopy}>Start when you are ready. No payment method is needed, and nothing is charged automatically. A store subscription is required after ten days; you can also subscribe sooner if you prefer.</Text>
+          {hasStoreTrial && <View style={styles.freeAccessCard}>
+            <Text style={styles.freeAccessEyebrow}>14 DAYS WITH YOUR RITUAL</Text>
+            <Text style={styles.freeAccessTitle}>Begin with a store trial.</Text>
+            <Text style={styles.freeAccessCopy}>Choose an eligible plan below. Apple or Google confirms your payment method and the renewal price before the 14-day trial starts. Cancel in store settings before it ends to avoid a charge.</Text>
           </View>}
           {activeAppTrial && <View style={styles.freeAccessCard}>
             <Text style={styles.freeAccessEyebrow}>YOUR FREE ACCESS IS OPEN</Text>
@@ -233,11 +208,11 @@ export default function PaywallScreen() {
             <Text style={styles.freeAccessTitle}>Keep your ritual close.</Text>
             <Text style={styles.freeAccessCopy}>Your plan and record are saved. Choose a membership to continue.</Text>
           </View>}
-          <Text style={styles.sectionLabel}>{canStartAppTrial ? 'MEMBERSHIP NOW OR AFTER FREE ACCESS' : 'CHOOSE YOUR MEMBERSHIP'}</Text>
-          {canStartAppTrial && <Text style={styles.choiceHint}>Tap a plan to subscribe now, or take ten days of free access first.</Text>}
+          <Text style={styles.sectionLabel}>CHOOSE YOUR MEMBERSHIP</Text>
+          {hasStoreTrial && <Text style={styles.choiceHint}>The free period appears only on plans your store account can redeem.</Text>}
           {storeLoading ? <ActivityIndicator style={{ margin: 25 }} color={colors.primary} /> : packages.map((pkg) => (
-            <Pressable key={pkg.identifier} accessibilityRole="radio" accessibilityState={{ selected: showPlanSelection && selected === pkg.identifier }} accessibilityLabel={`${planTitle(pkg)}, ${freeTrials[pkg.identifier] ? `${trialPeriodLabel(freeTrials[pkg.identifier])} free, then ` : ''}${pkg.product.priceString} per ${periodLabel(pkg)}${pkg.packageType === 'ANNUAL' && savings !== null ? `, save ${savings} percent compared with monthly` : ''}`} onPress={() => { setSelected(pkg.identifier); setPurchaseIntent(true); }} style={[styles.plan, showPlanSelection && selected === pkg.identifier && styles.planSelected]}>
-              <View style={[styles.radio, showPlanSelection && selected === pkg.identifier && styles.radioSelected]}>{showPlanSelection && selected === pkg.identifier && <View style={styles.radioCenter} />}</View>
+            <Pressable key={pkg.identifier} accessibilityRole="radio" accessibilityState={{ selected: selected === pkg.identifier }} accessibilityLabel={`${planTitle(pkg)}, ${freeTrials[pkg.identifier] ? `${trialPeriodLabel(freeTrials[pkg.identifier])} free, then ` : ''}${pkg.product.priceString} per ${periodLabel(pkg)}${pkg.packageType === 'ANNUAL' && savings !== null ? `, save ${savings} percent compared with monthly` : ''}`} onPress={() => setSelected(pkg.identifier)} style={[styles.plan, selected === pkg.identifier && styles.planSelected]}>
+              <View style={[styles.radio, selected === pkg.identifier && styles.radioSelected]}>{selected === pkg.identifier && <View style={styles.radioCenter} />}</View>
               <View style={{ flex: 1 }}><View style={styles.planHeading}><Text style={styles.planTitle}>{planTitle(pkg)}</Text>{pkg.packageType === 'ANNUAL' && savings !== null && <Text style={styles.savings}>SAVE {savings}% VS MONTHLY</Text>}</View><Text style={styles.planCaption}>{freeTrials[pkg.identifier] ? `Free for ${trialPeriodLabel(freeTrials[pkg.identifier])}, then ${pkg.product.priceString} per ${periodLabel(pkg)}` : `Billed ${pkg.product.priceString} per ${periodLabel(pkg)}`}</Text></View>
               <Text style={styles.price}>{pkg.product.priceString}</Text>
             </Pressable>
@@ -271,11 +246,10 @@ export default function PaywallScreen() {
         </View>
       </ScrollView>
       <View style={[styles.purchaseDock, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-        <Pressable disabled={busy || loading || (!purchaseNeedsRestore && !freeAccessIsPrimary && (!plan || storeLoading))} onPress={purchaseNeedsRestore ? restore : freeAccessIsPrimary ? startFreeAccess : purchase} accessibilityRole="button" style={[styles.cta, (busy || loading || (!purchaseNeedsRestore && !freeAccessIsPrimary && (!plan || storeLoading))) && { opacity: 0.55 }]}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{purchaseNeedsRestore ? 'Verify my store purchase' : freeAccessIsPrimary ? 'Start my 10 days free' : plan ? selectedTrial ? 'Start my store trial' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}` : 'Choose a membership'}</Text>}
+        <Pressable disabled={busy || storeLoading || (!purchaseNeedsRestore && !plan)} onPress={purchaseNeedsRestore ? restore : purchase} accessibilityRole="button" style={[styles.cta, (busy || storeLoading || (!purchaseNeedsRestore && !plan)) && { opacity: 0.55 }]}>
+          {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{purchaseNeedsRestore ? 'Verify my store purchase' : plan ? selectedTrial ? 'Start my 14-day store trial' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}` : 'Choose a membership'}</Text>}
         </Pressable>
-        {freeAccessIsPrimary ? <Text style={styles.terms}>Ten days of free app access. No payment or automatic charge. When it ends, a store subscription is required to continue.</Text> : plan && <Text style={styles.terms}>{selectedTrial ? `Free for ${selectedTrial}, then ${plan.product.priceString} per ${periodLabel(plan)}. Cancel before the store trial ends to avoid a charge. ` : `${plan.product.priceString} per ${periodLabel(plan)}. `}The subscription renews automatically until cancelled in store settings. The store confirms the offer before purchase.</Text>}
-        {canStartAppTrial && !freeAccessIsPrimary && !purchaseNeedsRestore && <Pressable disabled={busy} accessibilityRole="button" onPress={() => setPurchaseIntent(false)} style={styles.freeInstead}><Text style={styles.freeInsteadText}>Take ten days free instead</Text></Pressable>}
+        {plan && <Text style={styles.terms}>{selectedTrial ? `Free for ${selectedTrial} after store checkout, then ${plan.product.priceString} per ${periodLabel(plan)}. A valid store payment method is required. Cancel before the trial ends to avoid a charge. ` : `${plan.product.priceString} per ${periodLabel(plan)}. `}The subscription renews automatically until cancelled in store settings. The store confirms the terms before purchase.</Text>}
         <Pressable onPress={restore} disabled={busy} accessibilityRole="button" style={styles.restore}><Text style={styles.restoreText}>Restore purchases</Text></Pressable>
       </View>
       <EditorialStatusBackdrop />
@@ -297,7 +271,7 @@ const styles = StyleSheet.create({
   planHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }, savings: { color: 'white', backgroundColor: colors.primary, fontSize: 9, fontWeight: '800', overflow: 'hidden', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
   planCaption: { color: colors.textSecondary, fontSize: 11, marginTop: 3 }, price: { color: colors.primary, fontWeight: '800', fontSize: 17 }, purchaseDock: { backgroundColor: '#FCFBF8', borderTopWidth: 1, borderColor: colors.border, paddingHorizontal: 20, paddingTop: 10 }, cta: { backgroundColor: colors.primary, borderRadius: 16, minHeight: 54, justifyContent: 'center', alignItems: 'center' },
   ctaText: { color: 'white', fontSize: 15, fontWeight: '700' }, terms: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 8 }, restore: { alignItems: 'center', paddingTop: 8, paddingBottom: 2 },
-  restoreText: { color: colors.primary, fontSize: 13, fontWeight: '700' }, freeInstead: { alignItems: 'center', justifyContent: 'center', minHeight: 34, marginTop: 3 }, freeInsteadText: { color: colors.primary, fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' }, error: { color: '#A64032', fontSize: 12, lineHeight: 18, marginTop: 8, textAlign: 'center' }, retry: { alignItems: 'center', padding: 9 },
+  restoreText: { color: colors.primary, fontSize: 13, fontWeight: '700' }, error: { color: '#A64032', fontSize: 12, lineHeight: 18, marginTop: 8, textAlign: 'center' }, retry: { alignItems: 'center', padding: 9 },
   retryText: { color: colors.primary, fontWeight: '700' }, footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 9, marginTop: 4 }, footerLink: { color: colors.textSecondary, fontSize: 12, textDecorationLine: 'underline' },
   dot: { color: colors.textTertiary }, account: { textAlign: 'center', fontSize: 11, color: colors.textTertiary, marginTop: 12 },
   yourPlan: { borderRadius: 20, backgroundColor: '#FBFAF6', borderColor: '#E5E4D9', borderWidth: 1, padding: 19, marginTop: -27 },

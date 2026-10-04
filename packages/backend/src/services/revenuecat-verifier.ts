@@ -41,6 +41,7 @@ export class RevenueCatTransientError extends Error {
 // app and must not become a non-expiring production entitlement.
 const SUBSCRIPTION_TIERS = new Map<string, 'PRO_ANNUAL' | 'PRO_MONTHLY'>([
   ['skincoach_3999_1y', 'PRO_ANNUAL'],
+  ['skincoach_3999_1y_trial', 'PRO_ANNUAL'],
   ['skincoach_3999_1y:annual', 'PRO_ANNUAL'],
   ['skincoach_699_1m', 'PRO_MONTHLY'],
   ['skincoach_699_1m:monthly', 'PRO_MONTHLY']

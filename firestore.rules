@@ -46,9 +46,8 @@ service cloud.firestore {
         && get(grant).data.expiresAt <= get(grant).data.issuedAt + duration.value(30, 'd');
     }
 
-    // A ten-day free app lease starts only through startFreeTrial. The client
-    // cannot write or extend it, and an expired document remains to block a
-    // second trial for this account.
+    // Historical ten-day app leases remain valid until expiry. The client
+    // cannot write or extend one, and the backend no longer starts new leases.
     function hasAppTrial(userId) {
       let trial = /databases/$(database)/documents/users/$(userId)/entitlements/trial;
       return exists(trial)

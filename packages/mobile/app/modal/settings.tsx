@@ -303,7 +303,7 @@ export default function SettingsModal() {
               <Ionicons name="sparkles" size={18} color={colors.goldDark} />
             </View>
             <View style={styles.membershipInfo}>
-              <Text style={styles.membershipTier}>{isFreeAccess ? '10-day free access' : state === 'subscribed' ? 'Active membership' : 'Membership required'}</Text>
+              <Text style={styles.membershipTier}>{isFreeAccess ? 'Existing free access' : state === 'subscribed' ? 'Active membership' : 'Membership required'}</Text>
               <Text style={styles.membershipSub}>{email ?? 'Sign in to manage access'}</Text>
             </View>
             <TouchableOpacity

@@ -50,7 +50,7 @@ export default function AccessUnavailableScreen() {
         <View style={styles.icon}><Ionicons name="cloud-offline-outline" size={25} color={colors.primary} /></View>
         <Text style={styles.eyebrow}>CONNECTION PAUSED</Text>
         <Text style={styles.title}>We couldn't check your membership.</Text>
-        <Text style={styles.body}>Your free access or subscription may still be active. If you just started ten days free, that period may continue while we reconnect. Check your connection and try again; you will not be asked to buy another plan while verification is unavailable.</Text>
+        <Text style={styles.body}>Your membership may still be active. If you just completed a store checkout, it may take a moment to verify. Check your connection and try again; you will not be asked to buy another plan while verification is unavailable.</Text>
         {error && <Text style={styles.detail}>{error}</Text>}
         {signOutError && <Text accessibilityRole="alert" style={styles.detail}>{signOutError}</Text>}
         <Pressable accessibilityRole="button" disabled={busy || state === 'checking'} onPress={retry} style={[styles.cta, (busy || state === 'checking') && styles.disabled]}>

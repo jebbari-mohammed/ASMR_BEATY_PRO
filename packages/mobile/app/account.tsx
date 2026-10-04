@@ -125,7 +125,7 @@ export default function AccountScreen() {
       <View style={styles.verifyIcon}><Text style={styles.verifyIconText}>✉</Text></View>
       <Text style={styles.eyebrow}>ONE MORE STEP</Text>
       <Text style={styles.verifyTitle}>Verify your email.</Text>
-      <Text style={styles.verifyCopy}>We sent a link to {auth().currentUser?.email}. Confirm your address before starting ten days of free access so your ritual stays with your account.</Text>
+      <Text style={styles.verifyCopy}>We sent a link to {auth().currentUser?.email}. Confirm your address before choosing a membership so your ritual stays with your account.</Text>
       {message && <Text style={styles.error}>{message}</Text>}
       <Pressable disabled={busy} onPress={checkVerification} style={styles.cta}>{busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>I verified my email</Text>}</Pressable>
       <Pressable onPress={resendVerification} style={styles.linkButton}><Text style={styles.link}>Resend verification email</Text></Pressable>
@@ -145,7 +145,7 @@ export default function AccountScreen() {
         <View style={styles.form}>
           <Text style={styles.eyebrow}>YOUR PRIVATE SPACE</Text>
           <Text style={styles.title}>{mode === 'create' ? 'Create your account' : 'Welcome back'}</Text>
-          <Text style={styles.subtitle}>{planName && mode === 'create' ? `Save ${planName}, then try the full ritual free for ten days. You can edit every step.` : 'Keep your ritual and progress safely across devices.'}</Text>
+          <Text style={styles.subtitle}>{planName && mode === 'create' ? `Save ${planName}, then choose a membership to follow it. You can edit every step.` : 'Keep your ritual and progress safely across devices.'}</Text>
           <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="Email address" placeholderTextColor={colors.textTertiary} value={email} onChangeText={setEmail} onFocus={revealForm} style={styles.input} />
           <TextInput accessibilityLabel="Password" autoCapitalize="none" autoComplete={mode === 'create' ? 'new-password' : 'current-password'} secureTextEntry placeholder="Password" placeholderTextColor={colors.textTertiary} value={password} onChangeText={setPassword} onFocus={revealForm} style={styles.input} />
           {mode === 'create' && <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: adultConfirmed }} onPress={() => setAdultConfirmed(value => !value)} style={styles.ageRow}><Text style={styles.checkbox}>{adultConfirmed ? '☑' : '□'}</Text><Text style={styles.ageText}>I am 18 or older. I understand the routine is cosmetic self-care, not medical advice.</Text></Pressable>}
@@ -154,7 +154,7 @@ export default function AccountScreen() {
           <Pressable disabled={busy} onPress={submit} style={[styles.cta, busy && { opacity: 0.6 }]}>
             {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{mode === 'create' ? 'Continue' : 'Sign in'}</Text>}
           </Pressable>
-          {mode === 'create' && <Text style={styles.nextStep}>Next: verify your email, then choose when to start ten days of free access. No payment needed.</Text>}
+          {mode === 'create' && <Text style={styles.nextStep}>Next: verify your email, then review the current store plans and any eligible trial before checkout.</Text>}
           <Pressable onPress={() => { setMode(mode === 'create' ? 'signIn' : 'create'); setMessage(null); }} style={styles.linkButton}>
             <Text style={styles.link}>{mode === 'create' ? 'Already have an account? Sign in' : 'New here? Create an account'}</Text>
           </Pressable>

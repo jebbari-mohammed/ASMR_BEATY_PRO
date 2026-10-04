@@ -164,6 +164,7 @@ test('a refunded subscription record overrides a stale active entitlement projec
 
 test.each([
   ['App Store annual', 'skincoach_3999_1y', 'PRO_ANNUAL'],
+  ['App Store annual trial product', 'skincoach_3999_1y_trial', 'PRO_ANNUAL'],
   ['Play annual', 'skincoach_3999_1y:annual', 'PRO_ANNUAL'],
   ['App Store monthly', 'skincoach_699_1m', 'PRO_MONTHLY'],
   ['Play monthly', 'skincoach_699_1m:monthly', 'PRO_MONTHLY']

@@ -7,6 +7,7 @@ import { RevenueCatVerifier } from '../services/revenuecat-verifier.js';
 import { VerifiedEntitlementStore } from '../services/verified-entitlement-store.js';
 import { ReviewAccessGrant } from '../services/review-access-grant.js';
 import { AppFreeTrial, TrialAccountUnavailableError } from '../services/app-free-trial.js';
+import { BillingPolicyStore } from '../services/billing-policy.js';
 import { TrialStorePreference } from '../services/trial-store-preference.js';
 import { StoreAccessResolver } from '../services/store-access-resolver.js';
 import { SubscriptionVerificationLimiter } from '../services/subscription-verification-limiter.js';
@@ -26,6 +27,7 @@ const deletionService = new AccountDeletionService(db, storage, admin.auth());
 const entitlementStore = new VerifiedEntitlementStore(db, admin.auth());
 const reviewAccessGrant = new ReviewAccessGrant(db, admin.auth());
 const appFreeTrial = new AppFreeTrial(db, admin.auth());
+const billingPolicy = new BillingPolicyStore(db);
 const subscriptionVerificationLimiter = new SubscriptionVerificationLimiter(db);
 const skinFeelCheckinWriter = new SkinFeelCheckinWriter(db, admin.auth());
 const productDiscoveryCatalog = new ProductDiscoveryCatalog(db);
@@ -136,7 +138,7 @@ export const verifySubscriptionAccess = onCall(
   }
 );
 
-/** An account can see its one-time, no-billing trial status before choosing. */
+/** Existing app-access leases remain valid, but new no-card leases are closed. */
 export const getFreeTrialStatus = onCall({ enforceAppCheck: true }, async request => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to view free access.');
   if (request.auth.token.email_verified !== true) {
@@ -144,7 +146,8 @@ export const getFreeTrialStatus = onCall({ enforceAppCheck: true }, async reques
   }
   try {
     await subscriptionVerificationLimiter.consume(request.auth.uid);
-    return await appFreeTrial.status(request.auth.uid);
+    const status = await appFreeTrial.status(request.auth.uid);
+    return { ...status, eligible: false };
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     if (error instanceof TrialAccountUnavailableError) {
@@ -155,22 +158,28 @@ export const getFreeTrialStatus = onCall({ enforceAppCheck: true }, async reques
   }
 });
 
-/** Start exactly ten days of free app access without initiating a store charge. */
+/** Retired: the only new trial path is an eligible store subscription checkout. */
 export const startFreeTrial = onCall({ enforceAppCheck: true }, async request => {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to start free access.');
   if (request.auth.token.email_verified !== true) {
     throw new HttpsError('permission-denied', 'Verify your email before starting free access.');
   }
+  throw new HttpsError('failed-precondition', 'Free access now starts only through a store subscription checkout.');
+});
+
+/** Controls which separately configured store offering this account may buy. */
+export const getBillingPolicy = onCall({ enforceAppCheck: true }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to view membership plans.');
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError('permission-denied', 'Verify your email before viewing membership plans.');
+  }
   try {
     await subscriptionVerificationLimiter.consume(request.auth.uid);
-    return await appFreeTrial.start(request.auth.uid);
+    return await billingPolicy.current();
   } catch (error) {
     if (error instanceof HttpsError) throw error;
-    if (error instanceof TrialAccountUnavailableError) {
-      throw new HttpsError('failed-precondition', error.message);
-    }
-    console.error('[Trial] Start failed:', error);
-    throw new HttpsError('unavailable', 'Free access could not be started. Please try again.');
+    console.error('[Billing] Policy unavailable:', error);
+    throw new HttpsError('unavailable', 'Membership plans are temporarily unavailable.');
   }
 });
 

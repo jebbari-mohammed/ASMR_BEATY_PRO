@@ -15,6 +15,7 @@ export type FreeTrialStatus = {
 };
 
 export type VerifiedAccess = { active: boolean; expiresAtMs: number | null; source: string | null };
+export type BillingPolicy = { trialEnabled: boolean; offeringId: 'default' | 'trial_14d' };
 
 export class PurchaseVerificationPendingError extends Error {
   constructor(confirmedByStore: boolean, fromRestore = false) {
@@ -35,6 +36,13 @@ function isFreeTrialStatus(value: unknown): value is FreeTrialStatus {
   if (status.eligible && (status.active || status.endsAt !== null)) return false;
   if (status.active && status.endsAt === null) return false;
   return true;
+}
+
+function isBillingPolicy(value: unknown): value is BillingPolicy {
+  if (!value || typeof value !== 'object') return false;
+  const policy = value as Partial<BillingPolicy>;
+  return typeof policy.trialEnabled === 'boolean' &&
+    policy.offeringId === (policy.trialEnabled ? 'trial_14d' : 'default');
 }
 
 // Production RevenueCat API Keys (set via environment variables)
@@ -133,7 +141,7 @@ export class SubscriptionService {
     return (await this.verifyAccess(purchaseOnly)).active;
   }
 
-  /** Free app access is issued by the backend and never starts a store purchase. */
+  /** Legacy lease status is retained only for members who started one earlier. */
   static async getFreeTrialStatus(): Promise<FreeTrialStatus> {
     if (!this.isVerifiedAccount()) throw new Error('Verify your email before starting free access.');
     const result = await functions().httpsCallable('getFreeTrialStatus')({});
@@ -141,19 +149,17 @@ export class SubscriptionService {
     return result.data;
   }
 
-  static async startFreeTrial(): Promise<FreeTrialStatus> {
-    if (!this.isVerifiedAccount()) throw new Error('Verify your email before starting free access.');
-    const result = await functions().httpsCallable('startFreeTrial')({});
-    if (!isFreeTrialStatus(result.data) || !result.data.active) {
-      throw new Error('Could not start free access. Please try again.');
-    }
+  static async getBillingPolicy(): Promise<BillingPolicy> {
+    if (!this.isVerifiedAccount()) throw new Error('Verify your email before viewing membership plans.');
+    const result = await functions().httpsCallable('getBillingPolicy')({});
+    if (!isBillingPolicy(result.data)) throw new Error('Membership plans are temporarily unavailable.');
     return result.data;
   }
 
   /**
    * Executes purchase and activates entitlement via genuine app store.
    */
-  static async purchasePlan(planId: string): Promise<{ success: boolean; planId: string }> {
+  static async purchasePlan(planId: string, expectedProductId?: string, expectedOfferId?: string | null): Promise<{ success: boolean; planId: string }> {
     if (!this.isPurchaseReady()) {
       throw new Error('Pro enrollment is not available yet.');
     }
@@ -162,15 +168,29 @@ export class SubscriptionService {
     }
 
     try {
+      const policy = await this.getBillingPolicy();
       const offerings = await Purchases.getOfferings();
-      const currentPackage = offerings.current?.availablePackages.find(
+      const currentPackage = offerings.all[policy.offeringId]?.availablePackages.find(
         (pkg) => pkg.identifier === planId
       );
-      if (!currentPackage) {
-        throw new Error('This subscription is not available in the store. Please try again later.');
+      if (!currentPackage || !expectedProductId || currentPackage.product.identifier !== expectedProductId) {
+        throw new Error('Membership options changed. Reload the plans before checkout.');
       }
 
-      await Purchases.purchasePackage(currentPackage);
+      if (Platform.OS === 'android') {
+        if (expectedOfferId && (!policy.trialEnabled || expectedOfferId !== 'annual:trial-14d')) {
+          throw new Error('Trial availability changed. Reload the plans before checkout.');
+        }
+        const option = currentPackage.product.subscriptionOptions?.find(candidate =>
+          expectedOfferId ? candidate.id === expectedOfferId && candidate.freePhase?.price.amountMicros === 0 &&
+            candidate.freePhase.billingPeriod.iso8601 === 'P2W' : candidate.isBasePlan
+        );
+        if (!option) throw new Error('Store offer changed. Reload the plans before checkout.');
+        await Purchases.purchaseSubscriptionOption(option);
+      } else {
+        if (expectedOfferId) throw new Error('Store offer changed. Reload the plans before checkout.');
+        await Purchases.purchasePackage(currentPackage);
+      }
       let isPro: boolean;
       try {
         isPro = await this.hasActiveEntitlement(true);
@@ -214,10 +234,10 @@ export class SubscriptionService {
     return activeOnServer;
   }
 
-  static async getStorePackages(): Promise<PurchasesPackage[]> {
+  static async getStorePackages(policy: BillingPolicy): Promise<PurchasesPackage[]> {
     if (!this.isPurchaseReady()) throw new Error('Sign in before viewing subscription options.');
     const offerings = await Purchases.getOfferings();
-    return (offerings.current?.availablePackages ?? []).filter(
+    return (offerings.all[policy.offeringId]?.availablePackages ?? []).filter(
       (pkg) => pkg.packageType === 'ANNUAL' || pkg.packageType === 'MONTHLY'
     );
   }
@@ -244,7 +264,10 @@ export class SubscriptionService {
       }
     } else if (Platform.OS === 'android') {
       for (const pkg of packages) {
-        const period = trialPeriod(pkg.product, 'android');
+        const option = pkg.product.subscriptionOptions?.find(candidate =>
+          candidate.id === 'annual:trial-14d' && candidate.freePhase?.price.amountMicros === 0
+        );
+        const period = option?.freePhase?.billingPeriod.iso8601 ?? null;
         if (trialPeriodLabel(period)) freePeriods[pkg.identifier] = period!;
       }
     }

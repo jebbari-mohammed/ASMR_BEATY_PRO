@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import * as FileSystem from 'expo-file-system/legacy';
 import Purchases from 'react-native-purchases';
+import { Platform } from 'react-native';
 import type { PurchasesPackage } from 'react-native-purchases';
 import { REVENUECAT_CONFIG, SubscriptionService } from '../subscription-service';
 import { ScanService } from '../scan-service';
@@ -36,6 +37,7 @@ jest.mock('react-native-purchases', () => ({
     getCustomerInfo: jest.fn(),
     getOfferings: jest.fn(),
     purchasePackage: jest.fn(),
+    purchaseSubscriptionOption: jest.fn(),
     restorePurchases: jest.fn(),
     checkTrialOrIntroductoryPriceEligibility: jest.fn(),
     INTRO_ELIGIBILITY_STATUS: { INTRO_ELIGIBILITY_STATUS_ELIGIBLE: 2 },
@@ -64,6 +66,7 @@ const purchasePackage = Purchases.purchasePackage as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (Platform as { OS: string }).OS = 'ios';
   mockCurrentUser = null;
   storeGet.mockResolvedValue(null);
   storeSet.mockReset().mockResolvedValue(undefined);
@@ -77,6 +80,48 @@ beforeEach(() => {
   (FileSystem.getInfoAsync as jest.Mock).mockImplementation(async (path: string) => ({
     exists: path === 'file:///app/installation-boundary-v1.txt'
   }));
+});
+
+test('Android checkout selects only the explicit eligible 14-day offer and falls back to the base plan when disabled', async () => {
+  const originalKey = REVENUECAT_CONFIG.googleApiKey;
+  REVENUECAT_CONFIG.googleApiKey = 'goog_test';
+  (Platform as { OS: string }).OS = 'android';
+  mockCurrentUser = { uid: 'android-trial-user', emailVerified: true };
+  const base = { id: 'annual:annual', isBasePlan: true };
+  const trial = { id: 'annual:trial-14d', isBasePlan: false,
+    freePhase: { price: { amountMicros: 0 }, billingPeriod: { iso8601: 'P2W' } } };
+  const pkg = { identifier: 'annual', packageType: 'ANNUAL', product: {
+    identifier: 'skincoach_3999_1y:annual', subscriptionOptions: [base, trial]
+  } } as unknown as PurchasesPackage;
+  (Purchases.getOfferings as jest.Mock).mockResolvedValue({ all: {
+    default: { availablePackages: [pkg] }, trial_14d: { availablePackages: [pkg] }
+  } });
+  (Purchases.purchaseSubscriptionOption as jest.Mock).mockResolvedValue({});
+  try {
+    await SubscriptionService.initialize('android-trial-user');
+    await expect(SubscriptionService.getFreeTrialPeriods([pkg])).resolves.toEqual({ annual: 'P2W' });
+    mockVerify.mockResolvedValueOnce({ data: { trialEnabled: true, offeringId: 'trial_14d' } })
+      .mockResolvedValueOnce({ data: { isPro: true, source: 'revenuecat_server', expiresAtMs: Date.now() + 60_000 } });
+    await expect(SubscriptionService.purchasePlan('annual', 'skincoach_3999_1y:annual', 'annual:trial-14d'))
+      .resolves.toMatchObject({ success: true });
+    expect(Purchases.purchaseSubscriptionOption).toHaveBeenLastCalledWith(trial);
+
+    mockVerify.mockResolvedValueOnce({ data: { trialEnabled: false, offeringId: 'default' } });
+    await expect(SubscriptionService.purchasePlan('annual', 'skincoach_3999_1y:annual', 'annual:trial-14d'))
+      .rejects.toThrow('Trial availability changed');
+    expect(Purchases.purchaseSubscriptionOption).toHaveBeenCalledTimes(1);
+
+    mockVerify.mockResolvedValueOnce({ data: { trialEnabled: false, offeringId: 'default' } })
+      .mockResolvedValueOnce({ data: { isPro: true, source: 'revenuecat_server', expiresAtMs: Date.now() + 60_000 } });
+    await expect(SubscriptionService.purchasePlan('annual', 'skincoach_3999_1y:annual'))
+      .resolves.toMatchObject({ success: true });
+    expect(Purchases.purchaseSubscriptionOption).toHaveBeenLastCalledWith(base);
+  } finally {
+    await SubscriptionService.forgetIdentity();
+    REVENUECAT_CONFIG.googleApiKey = originalKey;
+    mockCurrentUser = null;
+    (Platform as { OS: string }).OS = 'ios';
+  }
 });
 
 test('onboarding completion does not depend on the iOS Keychain', async () => {
@@ -395,6 +440,7 @@ test('a new store identity waits for the previous account logout to finish', asy
   (Purchases.logOut as jest.Mock).mockImplementation(() => new Promise<void>(resolve => { finishLogout = resolve; }));
   try {
     await SubscriptionService.initialize('first-user');
+    (Purchases.logIn as jest.Mock).mockClear();
     const logout = SubscriptionService.forgetIdentity();
     mockCurrentUser = { uid: 'second-user', emailVerified: true };
     await SubscriptionService.initialize('second-user');
@@ -463,13 +509,14 @@ test('store purchase cannot be confirmed by reviewer access', async () => {
   REVENUECAT_CONFIG.appleApiKey = 'appl_test';
   mockCurrentUser = { uid: 'purchase-user', emailVerified: true };
   (Purchases.getOfferings as jest.Mock).mockResolvedValue({
-    current: { availablePackages: [{ identifier: 'annual' }] }
+    all: { default: { availablePackages: [{ identifier: 'annual', product: { identifier: 'skincoach_3999_1y' } }] } }
   });
   purchasePackage.mockResolvedValue({});
-  mockVerify.mockResolvedValue({ data: { isPro: true, source: 'store_review' } });
+  mockVerify.mockResolvedValueOnce({ data: { trialEnabled: false, offeringId: 'default' } })
+    .mockResolvedValueOnce({ data: { isPro: true, source: 'store_review' } });
   try {
     await SubscriptionService.initialize('purchase-user');
-    await expect(SubscriptionService.purchasePlan('annual'))
+    await expect(SubscriptionService.purchasePlan('annual', 'skincoach_3999_1y'))
       .rejects.toThrow('Do not buy again. Use Restore purchases');
     expect(mockVerify).toHaveBeenCalledWith({ purchaseOnly: true });
     expect(purchasePackage).toHaveBeenCalledTimes(1);
@@ -484,13 +531,14 @@ test('a completed store checkout with a verification outage stays in restore sta
   REVENUECAT_CONFIG.appleApiKey = 'appl_test';
   mockCurrentUser = { uid: 'purchase-pending', emailVerified: true };
   (Purchases.getOfferings as jest.Mock).mockResolvedValue({
-    current: { availablePackages: [{ identifier: 'annual' }] }
+    all: { default: { availablePackages: [{ identifier: 'annual', product: { identifier: 'skincoach_3999_1y' } }] } }
   });
   purchasePackage.mockResolvedValue({});
-  mockVerify.mockRejectedValue(new Error('network unavailable'));
+  mockVerify.mockResolvedValueOnce({ data: { trialEnabled: false, offeringId: 'default' } })
+    .mockRejectedValueOnce(new Error('network unavailable'));
   try {
     await SubscriptionService.initialize('purchase-pending');
-    await expect(SubscriptionService.purchasePlan('annual'))
+    await expect(SubscriptionService.purchasePlan('annual', 'skincoach_3999_1y'))
       .rejects.toThrow('Do not buy again. Use Restore purchases');
     expect(purchasePackage).toHaveBeenCalledTimes(1);
     expect(mockVerify).toHaveBeenCalledWith({ purchaseOnly: true });
@@ -557,18 +605,18 @@ test('restore does not call a store-confirmed membership absent when server veri
   }
 });
 
-test('exact free access does not require store configuration or start silently', async () => {
+test('an existing free lease remains readable but new trials require store configuration', async () => {
   mockCurrentUser = { uid: 'free-user', emailVerified: true };
   const originalKey = REVENUECAT_CONFIG.appleApiKey;
   REVENUECAT_CONFIG.appleApiKey = 'appl_placeholder_asmr';
   try {
-    mockVerify.mockResolvedValueOnce({ data: { eligible: true, active: false, endsAt: null } });
+    mockVerify.mockResolvedValueOnce({ data: { eligible: false, active: false, endsAt: null } });
     await expect(SubscriptionService.getFreeTrialStatus()).resolves.toEqual({
-      eligible: true, active: false, endsAt: null
+      eligible: false, active: false, endsAt: null
     });
     expect(mockVerify).toHaveBeenCalledTimes(1);
     mockVerify.mockResolvedValueOnce({ data: { eligible: false, active: true, endsAt: '2026-10-14T03:00:00.000Z' } });
-    await expect(SubscriptionService.startFreeTrial()).resolves.toMatchObject({ active: true });
+    await expect(SubscriptionService.getFreeTrialStatus()).resolves.toMatchObject({ active: true });
     const expiresAtMs = Date.now() + 10 * 24 * 60 * 60 * 1000;
     mockVerify.mockResolvedValueOnce({ data: { isPro: true, source: 'app_trial', expiresAtMs } });
     await expect(SubscriptionService.verifyAccess()).resolves.toEqual({ active: true, expiresAtMs, source: 'app_trial' });
@@ -601,16 +649,16 @@ test('a bounded server cache response opens ordinary access', async () => {
   mockCurrentUser = null;
 });
 
-test('free access rejects malformed server status and unverified accounts', async () => {
+test('billing policy and old lease reject malformed server status and unverified accounts', async () => {
   mockCurrentUser = { uid: 'free-user', emailVerified: true };
   mockVerify.mockResolvedValueOnce({ data: { eligible: true, active: true } });
   await expect(SubscriptionService.getFreeTrialStatus()).rejects.toThrow('temporarily unavailable');
   mockVerify.mockResolvedValueOnce({ data: { eligible: true, active: true, endsAt: '2026-10-14T03:00:00.000Z' } });
   await expect(SubscriptionService.getFreeTrialStatus()).rejects.toThrow('temporarily unavailable');
-  mockVerify.mockResolvedValueOnce({ data: { eligible: false, active: false, endsAt: null } });
-  await expect(SubscriptionService.startFreeTrial()).rejects.toThrow('Could not start free access');
+  mockVerify.mockResolvedValueOnce({ data: { trialEnabled: true, offeringId: 'default' } });
+  await expect(SubscriptionService.getBillingPolicy()).rejects.toThrow('temporarily unavailable');
   mockCurrentUser = { uid: 'unverified', emailVerified: false };
-  await expect(SubscriptionService.startFreeTrial()).rejects.toThrow('Verify your email');
+  await expect(SubscriptionService.getBillingPolicy()).rejects.toThrow('Verify your email');
 });
 
 test('trial wording is withheld when iOS eligibility is unknown or unavailable', async () => {

@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
-const { collection, doc, getDoc, getDocs, limit, orderBy, query, setDoc, deleteDoc, writeBatch, Timestamp } = require('firebase/firestore');
+const { collection, doc, getDoc, getDocFromServer, getDocs, limit, orderBy, query, setDoc, deleteDoc, writeBatch, Timestamp } = require('firebase/firestore');
 
 async function main() {
   const testEnv = await initializeTestEnvironment({
@@ -50,6 +50,8 @@ async function main() {
     await assertFails(setDoc(reviewGrant, validReviewGrant));
     await assertFails(setDoc(trialGrant, validTrialGrant));
     await assertFails(getDoc(trialGrant));
+    await assertFails(setDoc(doc(alice, 'billingPolicy/current'), { trialEnabled: true }));
+    await assertFails(getDocFromServer(doc(alice, 'billingPolicy/current')));
     await assertFails(setDoc(doc(adminClient, 'users/alice/entitlements/review'), validReviewGrant));
     await assertFails(setDoc(doc(adminClient, 'users/alice/entitlements/trial'), validTrialGrant));
 
@@ -96,7 +98,7 @@ async function main() {
     for (const invalidGrant of invalidReviewGrants) {
       await seedReview(invalidGrant);
       await assertFails(setDoc(aliceLog, validLog));
-      await assertFails(getDoc(aliceCheckin));
+      await assertFails(getDocFromServer(aliceCheckin));
     }
     await seedReview(validReviewGrant);
     await assertSucceeds(setDoc(aliceLog, validLog));

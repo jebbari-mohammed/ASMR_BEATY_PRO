@@ -1,37 +1,35 @@
 # Subscriptions and paid access
 
-This document describes the routine, calendar, shelf, and reminder release. Photo analysis, AI coaching, and guided face exercise are not included in the current app or paywall.
+This document describes the routine, calendar, shelf, and reminder app. Photo analysis and AI coaching are unavailable.
 
-## Products
+## Current checkout
 
-After adult onboarding, Firebase email verification, and account sign-in, a member can explicitly start one exact ten-day period of free app access. It does not start store billing or charge automatically. When it ends, the hard paywall requires an active store subscription. The paywall displays localized prices returned by the store through RevenueCat. The intended US prices are $39.99 per year and $6.99 per month; the store controls the final price and territory availability.
+After adult onboarding and email verification, the hard paywall loads the **server-selected RevenueCat offering**. A new trial always begins through an Apple or Google subscription checkout. The store requires a valid payment method and confirms the localized renewal price. The subscription renews automatically unless cancelled in store settings before the trial ends. The app does not collect card numbers.
 
-| Store | Annual product | Monthly product |
-| --- | --- | --- |
-| Apple App Store | `skincoach_3999_1y` | `skincoach_699_1m` |
-| Google Play | `skincoach_3999_1y:annual` | `skincoach_699_1m:monthly` |
+The Firestore document `billingPolicy/current` controls new in-app checkout paths. `trialEnabled: false` selects RevenueCat offering `default`; `true` selects `trial_14d`. Missing or malformed configuration fails closed to `default`. Only backend operators can write this document. Use `node scripts/set-store-trial.mjs status --project asmr-skin-coach` to read it, or `on|off --project asmr-skin-coach --apply` to change it. The switch must stay off until signed-device purchase QA succeeds. Turning it off does not cancel trials already started and cannot revoke an offer presented outside the app by a store.
 
-Both products are in RevenueCat offering `default` and attached to the existing entitlement `asmr_beaty_pro_pro`. The default offering also contains a Test Store lifetime package. The mobile paywall filters its visible choices to annual and monthly. A purchase is not treated as active because a client says so: the Firebase callable queries RevenueCat's subscriber API for the authenticated Firebase UID, checks this entitlement and expiration, and writes a server-owned entitlement record. Firestore rules require that record and email verification to read or write paid records.
+| Store | Standard annual | Trial annual | Monthly |
+| --- | --- | --- | --- |
+| App Store | `skincoach_3999_1y` | `skincoach_3999_1y_trial`, two-week introductory offer | `skincoach_699_1m` |
+| Google Play | `skincoach_3999_1y:annual` | Same product, `annual:trial-14d` offer with two free weeks | `skincoach_699_1m:monthly` |
 
-The deployed verifier checks the exact four store product identifiers above, a finite subscription expiration, refund status, and grace period. It can recognize an approved active subscription even when RevenueCat projects the separate Test Store lifetime package into the Pro entitlement. Firestore rules also require a future timestamp on the server-owned Pro cache, so a lifetime Test Store record cannot retain paid data access. The Functions and rules were deployed October 3, 2026 Pacific time; signed purchase, restore, and account-switch QA still need to confirm live behavior before public release.
+Apple enforces introductory eligibility for its subscription group. The app displays trial wording only when StoreKit confirms eligibility. Google Play verifies that the account has never subscribed to any app subscription. The Play offer has RevenueCat tag `rc-ignore-offer` so it is not selected automatically; when the backend switch is on, the app explicitly purchases `annual:trial-14d` only if the eligible free phase is returned. Otherwise it purchases the base plan and shows the store price. The Play US annual base plan currently displays $38.99; the Apple annual product is $39.99. The app uses actual store-localized prices rather than an identifier-derived price.
 
-## Purchase and restore
+The trial Apple SKU, standard Apple SKUs, and Play base plans are attached to RevenueCat entitlement `asmr_beaty_pro_pro`. RevenueCat offering `trial_14d` maps the Apple trial SKU and the Play annual base plan to its annual package; both offerings include standard monthly products. The mobile app shows only annual and monthly packages, despite a separate Test Store lifetime package in the default offering.
 
-1. Firebase Auth identifies the person by UID. The app configures RevenueCat with that UID.
-2. The paywall loads current store packages and shows each store-localized price and renewal period.
-3. Apple or Google completes the payment. The app asks the server to verify the current RevenueCat entitlement before opening paid tabs.
-4. Restore asks the store for purchases, then repeats server verification. Cancellation, expiry, refund, account switch, and grace period must be tested on signed builds before launch.
-5. The RevenueCat webhook authenticates with its bearer secret and reconciles current subscriber state with RevenueCat. Webhook payloads alone are not trusted to grant Pro.
+The old ten-day **no-card** app lease is retired for new accounts: the backend `startFreeTrial` callable rejects new starts, and `getFreeTrialStatus` always reports ineligible. Existing valid leases continue until their saved end date. The app no longer offers a no-card start action.
 
-If store packages cannot load, paid purchase remains unavailable, but an eligible member can still start free app access. The paywall offers retry, restore, account switching, and legal links. If the store accepts payment but server verification has not caught up, the user can restore; the app does not grant local access as a shortcut.
+## Server access and restore
 
-For ordinary access checks, a transport failure or RevenueCat HTTP 429/5xx response can use a server-verified paid record only if its store period remains unexpired, the verification is less than six hours old, the Auth account is verified and enabled, and deletion is not in progress. HTTP 4xx errors other than 429, configuration faults, and malformed responses cannot use this fallback. Purchase and restore always require a fresh store check; an explicit refund or no-access result clears the old cache. The app rechecks access on launch and foreground as before. This six-hour limit applies to the callable fallback, not to Firestore's separate paid-data rule: Firestore relies on the server-owned record's finite store expiry and webhook reconciliation. A refund that cannot be reconciled during an outage may therefore retain direct data access until the cached store expiry.
+The mobile client identifies RevenueCat with the Firebase UID. A purchase or restore calls `verifySubscriptionAccess` after the store returns. The backend independently checks RevenueCat's subscriber API, an approved product ID, the Pro entitlement, finite expiry, refund, and grace status before writing a server-owned entitlement. Firestore rules require that record and verified email for paid data. An unverified purchase stays in a Restore state and does not locally open access. The webhook authenticates with its secret and reconciles subscriber state; the payload alone never grants Pro.
+
+Ordinary access checks can use a server-verified paid record for up to six hours only on transport failures or RevenueCat 429/5xx responses while the store period remains active. Purchase and restore require a fresh store check. Firestore's separate paid-data rule uses the finite server-owned store expiry and webhook reconciliation; a refund during an outage may retain direct data access until that expiry.
 
 ## Release gates
 
-- The first Apple subscription group and both products are still marked **Prepare for Submission** in App Store Connect. Apple requires the first group to be submitted with an app version. Annual/monthly descriptions and group localization now describe the shipped routine, calendar, shelf, and reminders; review screenshots and first-version submission remain open.
-- Google Play annual and monthly base plans are active, but closed-test purchases on a final signed Android App Bundle remain unverified.
-- Verify the exact ten-day free period, purchase, restore, cancellation, expiration, refund, grace period, reinstall, account switch, and displayed localized prices on both stores with the deployed backend.
-- The RevenueCat webhook destination and server secret were confirmed after deployment. Never put server secrets in the mobile bundle.
+- The first App Store subscription group and products still need review screenshots and app-version submission. Public app release remains unchanged.
+- Test the exact store checkout, trial eligibility, payment-method gate, full-price fallback, switch on/off, renewal display, purchase, restore, cancellation, expiration, refund, account switch, and backend verification on signed owner-only TestFlight and Play internal builds.
+- Confirm Apple and Google store offer availability on real test accounts before enabling the backend switch. Store catalog propagation can take time.
+- Do not publish the app or claim live trial availability based only on simulator or unit tests.
 
-See [release-checklist.md](release-checklist.md) for the current verification gates.
+See [release-checklist.md](release-checklist.md) for the broader launch status.
