@@ -73,12 +73,22 @@ disclosure, and allowed tracking parameters. There is currently no approved
 partner host or commissioned product in the bundled list.
 
 As of October 4, 2026, the owner has an Impact account with verified ASMR Beauty
-Pro social properties and the live website linked in its account and public
-profile. Its Ulta direct-signup applications were declined by Ulta; Impact
+Pro social properties. Its account and public profile link to the live website,
+and its public description explains the app and optional product discovery.
+Its Ulta direct-signup applications were declined by Ulta; Impact
 showed no reason in the notifications. The separate Impact Marketplace
 application was also declined. Do not create or publish Ulta tracking links
 unless Ulta later approves a contract and explicitly permits product deep
 links. The clean, noncommissioned product links remain available in the meantime.
+
+An alternative under review is [iHerb's affiliate program](https://www.iherb.com/info/affiliates).
+Its published [terms](https://www.iherb.com/lp/affiliate-terms-and-conditions)
+say Impact supports app-to-app tracking and that affiliates may deep link to
+products after approval. Applying accepts a separate binding agreement. No
+iHerb application, contract, product curation, or mobile link QA is complete;
+do not substitute iHerb tracking URLs into the Ulta-only importer. Any
+retailer expansion needs an explicit merchant-specific URL policy, contract
+check, redirect audit, and disclosure review.
 
 ### Generate links from Impact
 
