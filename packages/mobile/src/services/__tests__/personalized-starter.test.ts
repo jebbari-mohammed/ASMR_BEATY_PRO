@@ -13,7 +13,7 @@ test('a short, dry and reactive-skin plan stays gentle and fits four steps', () 
   expect(plan.steps).toHaveLength(4);
   expect(plan.steps.filter(step => step.period === 'morning').map(step => step.category)).toEqual(['Hydrate', 'Protect']);
   expect(plan.steps.find(step => step.id === 'm2')?.detail).toContain('comfortable');
-  expect(plan.caution).toContain('reacts easily');
+  expect(plan.caution).toContain('sometimes reacts');
   expect(plan.steps.every(step => step.category !== 'Treat')).toBe(true);
   expect(plan.whyItFits).toEqual(expect.arrayContaining([expect.stringContaining('Sun protection'), expect.stringContaining('Starting from zero')]));
   expect(plan.habitPrompt).toContain('calendar');
@@ -91,4 +91,36 @@ test('missing legacy answers do not assume products or promise unavailable journ
   const legacy = buildStarterPlan({ selectedGoals: ['unsure_help_me_decide'], primaryMotivation: 'understand_my_skin' });
   expect(current.firstWeek[0].detail).toContain('skip it until you are ready');
   expect(legacy.habitPrompt).not.toMatch(/journal|note/i);
+});
+
+test('an occasional reaction gets the gentler plan and limits are clear', () => {
+  const plan = buildStarterPlan({
+    selectedGoals: ['fewer_visible_breakouts'],
+    skinFeelByEndOfDay: 'oily_or_shiny',
+    sensitivityLevel: 'sometimes',
+    timeCommitment: 'about_5_minutes'
+  });
+  expect(plan.steps.find(step => step.id === 'm1')?.name).toBe('Refresh gently');
+  expect(plan.steps.find(step => step.id === 'm2')?.detail).toContain('fragrance-free');
+  expect(plan.caution).toContain('dermatologist');
+  expect(plan.steps.every(step => step.category !== 'Treat')).toBe(true);
+});
+
+test('the four-question matrix always yields a bounded, editable starter routine', () => {
+  const goals = ['more_hydration_less_dryness', 'fewer_visible_breakouts', 'calmer_looking_redness', 'smoother_looking_texture', 'less_shine_oiliness', 'unsure_help_me_decide'] as const;
+  const feels = ['tight_or_dry', 'oily_or_shiny', 'combination_dry_and_oily', 'comfortable_balanced', 'changes_a_lot', 'unsure'] as const;
+  const sensitivities = ['almost_never', 'occasionally', 'sometimes', 'often', 'very_easily', 'unsure'] as const;
+  const times = ['about_2_minutes', 'about_5_minutes', 'ten_plus_minutes'] as const;
+  for (const goal of goals) for (const feel of feels) for (const sensitivity of sensitivities) for (const time of times) {
+    const plan = buildStarterPlan({ selectedGoals: [goal], skinFeelByEndOfDay: feel, sensitivityLevel: sensitivity, timeCommitment: time });
+    const morning = plan.steps.filter(step => step.period === 'morning');
+    const evening = plan.steps.filter(step => step.period === 'evening');
+    expect(morning.map(step => step.category).slice(-2)).toEqual(['Hydrate', 'Protect']);
+    expect(evening.map(step => step.category)).toEqual(['Cleanse', 'Hydrate']);
+    expect(plan.steps).toHaveLength(time === 'about_2_minutes' ? 4 : 5);
+    expect(new Set(plan.steps.map(step => step.id)).size).toBe(plan.steps.length);
+    expect(plan.steps.every(step => step.name.length <= 60 && step.detail.length <= 180)).toBe(true);
+    expect(plan.steps.every(step => step.category !== 'Treat')).toBe(true);
+    expect(plan.caution).toMatch(/dermatologist/);
+  }
 });

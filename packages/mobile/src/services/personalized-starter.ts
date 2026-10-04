@@ -34,7 +34,9 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
   const dry = state.skinFeelByEndOfDay === 'tight_or_dry';
   const oily = state.skinFeelByEndOfDay === 'oily_or_shiny';
   const combination = state.skinFeelByEndOfDay === 'combination_dry_and_oily';
-  const sensitive = state.sensitivityLevel === 'often' || state.sensitivityLevel === 'very_easily';
+  // An occasional reaction is enough to favor the gentler starter wording.
+  // These answers cannot rule out allergies or an underlying skin condition.
+  const sensitive = state.sensitivityLevel === 'sometimes' || state.sensitivityLevel === 'often' || state.sensitivityLevel === 'very_easily';
   const short = state.timeCommitment === 'about_2_minutes' || state.desiredComplexity === 'minimal';
   const hydrationGoal = goals.has('more_hydration_less_dryness');
   const shineGoal = goals.has('less_shine_oiliness');
@@ -109,12 +111,12 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
     ? 'Two morning steps and two evening steps make this easy to return to. You can edit every step after joining.'
     : 'A gentle foundation for morning and evening. You can edit every step after joining.';
   const caution = sensitive
-    ? 'You told us your skin reacts easily. Keep familiar products; if you replace one, try a fragrance-free option slowly and stop if it irritates you.'
-    : 'Start with products you already tolerate. Introduce anything new slowly and stop a product that irritates you.';
+    ? 'You said your skin sometimes reacts. Use products you already tolerate; stop anything that stings or burns. Ask a dermatologist about persistent or severe symptoms.'
+    : 'Use products you already tolerate and skip any step that needs a product you do not own. Stop anything that irritates you; ask a dermatologist about persistent or severe symptoms.';
 
   const whyItFits = [
     short ? 'You chose a short ritual, so morning starts with moisturizer and sun protection.' : 'Your morning cleanse can be a quick water rinse when that feels better.',
-    dry ? 'You described tightness, so moisturizing damp skin is the first comfort step.' : oily ? 'You described shine, so the moisturizer note favors a light, non-comedogenic feel.' : combination ? 'You described dry and shiny areas, so you can use a lighter amount of moisturizer where your skin feels shiny.' : 'It begins with products you already tolerate.',
+    dry ? 'You described tightness, so the moisturizer step suggests applying it to slightly damp skin.' : oily ? 'You described shine, so the moisturizer note favors a light, non-comedogenic feel.' : combination ? 'You described dry and shiny areas, so you can use a lighter amount of moisturizer where your skin feels shiny.' : 'It begins with products you already tolerate.',
     sensitive ? 'You said products can bother your skin, so the steps avoid scrubbing and add no new treatment.' : 'You can decide later whether any other products belong in your routine.'
   ];
   if (breakoutGoal) whyItFits.push('For visible breakouts, cleanse gently and avoid abrasive scrubs; this is a care routine, not an acne treatment.');
@@ -130,7 +132,7 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
     : state.primaryMotivation === 'find_right_products' ? 'Keep the products you already own together on your private shelf.'
     : 'Return to your small ritual when you can; consistency grows one day at a time.';
 
-  const personalInsight = `${short ? 'You asked for something quick' : 'You made room for a slower moment'}${dry ? ' and said your skin feels tight by evening' : oily ? ' and notice shine by evening' : ''}. ${sensitive ? 'So your start stays with familiar, gentle products.' : 'So your first week begins with the basics you already know.'}`;
+  const personalInsight = `${short ? 'You asked for something quick' : 'You made room for a slower moment'}${dry ? ' and said your skin feels tight by evening' : oily ? ' and notice shine by evening' : ''}. ${sensitive ? 'So your start stays with familiar, gentle products.' : 'So your first week begins with simple steps you can adjust.'}`;
   const firstWeek = [
     {
       day: 'DAY 01', title: 'Make it familiar',
