@@ -106,6 +106,37 @@ test('an occasional reaction gets the gentler plan and limits are clear', () => 
   expect(plan.steps.every(step => step.category !== 'Treat')).toBe(true);
 });
 
+test('the moisturizer explanation follows the step for oily skin with a hydration goal', () => {
+  const plan = buildStarterPlan({
+    selectedGoals: ['more_hydration_less_dryness'],
+    skinFeelByEndOfDay: 'oily_or_shiny',
+    sensitivityLevel: 'almost_never'
+  });
+  expect(plan.steps.find(step => step.id === 'm2')?.detail).toContain('slightly damp');
+  expect(plan.whyItFits[1]).toContain('slightly damp');
+  expect(plan.whyItFits[1]).not.toContain('non-comedogenic');
+});
+
+test('the moisturizer explanation follows the gentle step for sensitive oily skin', () => {
+  const plan = buildStarterPlan({
+    selectedGoals: ['less_shine_oiliness'],
+    skinFeelByEndOfDay: 'oily_or_shiny',
+    sensitivityLevel: 'often'
+  });
+  expect(plan.steps.find(step => step.id === 'm2')?.detail).toContain('fragrance-free');
+  expect(plan.whyItFits[1]).toContain('fragrance-free');
+  expect(plan.whyItFits[1]).not.toContain('non-comedogenic');
+});
+
+test('plan caution distinguishes irritating cosmetics from prescribed treatment', () => {
+  for (const sensitivityLevel of ['almost_never', 'very_easily'] as const) {
+    const caution = buildStarterPlan({ selectedGoals: ['unsure_help_me_decide'], sensitivityLevel }).caution;
+    expect(caution).toMatch(/stop a non-prescribed cosmetic/i);
+    expect(caution).toMatch(/ask your prescriber before changing how you use a prescribed treatment/i);
+    expect(caution).toMatch(/dermatologist.*persistent or severe symptoms/i);
+  }
+});
+
 test('the Occasionally answer also uses the gentle path and permits skipping an unsafe product', () => {
   const plan = buildStarterPlan({
     selectedGoals: ['less_shine_oiliness'],
@@ -136,5 +167,17 @@ test('the four-question matrix always yields a bounded, editable starter routine
     expect(plan.steps.every(step => step.name.length <= 60 && step.detail.length <= 180)).toBe(true);
     expect(plan.steps.every(step => step.category !== 'Treat')).toBe(true);
     expect(plan.caution).toMatch(/dermatologist/);
+    const moisturizerDetail = plan.steps.find(step => step.id === 'm2')?.detail ?? '';
+    const moisturizerRationale = plan.whyItFits[1];
+    const cue = [
+      ['slightly damp', 'slightly damp'],
+      ['fragrance-free', 'fragrance-free'],
+      ['dry areas first', 'dry areas first'],
+      ['non-comedogenic', 'non-comedogenic'],
+      ['without rubbing', 'without rubbing'],
+      ['already know and tolerate', 'already tolerate']
+    ].find(([detail]) => moisturizerDetail.includes(detail))?.[1];
+    expect(cue).toBeDefined();
+    expect(moisturizerRationale).toContain(cue);
   }
 });

@@ -45,6 +45,12 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
   const textureGoal = goals.has('smoother_looking_texture') || goals.has('less_noticeable_pores');
   const eyeGoal = goals.has('dark_circle_appearance');
   const sunGoal = goals.has('more_even_looking_tone') || goals.has('fine_line_appearance');
+  const moisturizerApproach = dry || hydrationGoal ? 'damp'
+    : sensitive || rednessGoal ? 'gentle'
+    : combination ? 'by_area'
+    : oily || shineGoal || breakoutGoal ? 'light'
+    : eyeGoal ? 'around_eyes'
+    : 'familiar';
   const focus = goalNames[state.selectedGoals[0] ?? ''] ?? 'a simple daily habit';
   const primaryGoal = state.selectedGoals[0];
   const ritualName = primaryGoal === 'more_hydration_less_dryness' ? 'The Comfort Ritual'
@@ -65,15 +71,15 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
   });
   base.push({
     id: 'm2', period: 'morning', category: 'Hydrate', name: 'Moisturize',
-    detail: dry || hydrationGoal
+    detail: moisturizerApproach === 'damp'
       ? 'Apply a familiar moisturizer while skin is slightly damp after rinsing, if that feels comfortable.'
-      : sensitive || rednessGoal
+      : moisturizerApproach === 'gentle'
         ? 'Use a familiar moisturizer. If you replace it, look for fragrance-free and introduce it slowly.'
-        : combination
+        : moisturizerApproach === 'by_area'
           ? 'Use a familiar moisturizer on dry areas first; apply a lighter amount where your skin feels shiny.'
-        : oily || shineGoal || breakoutGoal
+        : moisturizerApproach === 'light'
           ? 'Use a light moisturizer you tolerate; if replacing it, look for one labeled non-comedogenic.'
-          : eyeGoal
+          : moisturizerApproach === 'around_eyes'
             ? 'Apply a familiar moisturizer gently, without rubbing or tugging around your eyes.'
             : 'Apply a moisturizer you already know and tolerate.'
   });
@@ -111,12 +117,25 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
     ? 'Two morning steps and two evening steps make this easy to return to. You can edit every step after joining.'
     : 'A gentle foundation for morning and evening. You can edit every step after joining.';
   const caution = sensitive
-    ? 'You said your skin can react. Use products you already tolerate; skip a step if you do not have a product that feels safe. Stop anything that stings or burns. Ask a dermatologist about persistent or severe symptoms.'
-    : 'Use products you already tolerate and skip any step that needs a product you do not own. Stop anything that irritates you; ask a dermatologist about persistent or severe symptoms.';
+    ? 'You said your skin can react. Use products you already tolerate; skip a step if you do not have a product that feels safe. Stop a non-prescribed cosmetic that stings or burns. Ask your prescriber before changing how you use a prescribed treatment. See a dermatologist for persistent or severe symptoms.'
+    : 'Use products you already tolerate and skip any step that needs a product you do not own. Stop a non-prescribed cosmetic that irritates you. Ask your prescriber before changing how you use a prescribed treatment. See a dermatologist for persistent or severe symptoms.';
+
+  const moisturizerFit = moisturizerApproach === 'damp'
+    ? dry ? 'You described tightness, so the moisturizer step suggests applying it to slightly damp skin.'
+      : 'You chose more hydration, so the moisturizer step suggests applying it to slightly damp skin.'
+    : moisturizerApproach === 'gentle'
+      ? 'Your moisturizer step keeps to a familiar product and suggests fragrance-free if replacing it.'
+      : moisturizerApproach === 'by_area'
+        ? 'You described dry and shiny areas, so the moisturizer step starts on dry areas first and uses a lighter amount where you feel shiny.'
+        : moisturizerApproach === 'light'
+          ? 'Your moisturizer step favors a light product you tolerate and suggests non-comedogenic if replacing it.'
+          : moisturizerApproach === 'around_eyes'
+            ? 'Your moisturizer step suggests applying a familiar product without rubbing or tugging around your eyes.'
+            : 'Your moisturizer step begins with a product you already tolerate.';
 
   const whyItFits = [
     short ? 'You chose a short ritual, so morning starts with moisturizer and sun protection.' : 'Your morning cleanse can be a quick water rinse when that feels better.',
-    dry ? 'You described tightness, so the moisturizer step suggests applying it to slightly damp skin.' : oily ? 'You described shine, so the moisturizer note favors a light, non-comedogenic feel.' : combination ? 'You described dry and shiny areas, so you can use a lighter amount of moisturizer where your skin feels shiny.' : 'It begins with products you already tolerate.',
+    moisturizerFit,
     sensitive ? 'You said products can bother your skin, so the steps avoid scrubbing and add no new treatment.' : 'You can decide later whether any other products belong in your routine.'
   ];
   if (breakoutGoal) whyItFits.push('For visible breakouts, cleanse gently and avoid abrasive scrubs; this is a care routine, not an acne treatment.');
