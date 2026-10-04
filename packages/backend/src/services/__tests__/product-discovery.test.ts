@@ -126,7 +126,7 @@ test.each([
   expect(() => validateApprovedTrackingHosts([{ ...approval, host }])).toThrow();
 });
 
-test.each(['uid', 'customerId', 'PartnerCustomerId', 'PCID', 'deviceId', 'email', 'phone', 'ipAddress'])
+test.each(['uid', 'customerId', 'PartnerCustomerId', 'PartnerCustId', 'PCID', 'deviceId', 'email', 'phone', 'ipAddress'])
 ('host approval cannot allow personal query key %s', key => {
   expect(() => validateApprovedTrackingHosts([{ ...approval, allowedQueryKeys: [key] }])).toThrow();
 });
@@ -138,6 +138,9 @@ test('rejects unapproved tracking parameters, dynamic UID placeholders, and host
   }], [approval])).toThrow();
   expect(() => validateDiscoveryProducts([{
     ...commissioned, url: `https://${approval.host}/c/{uid}/456?campaign=asmrbeautypro`
+  }], [approval])).toThrow();
+  expect(() => validateDiscoveryProducts([{
+    ...commissioned, url: `https://${approval.host}/c/123/456?campaign=%257B%257BMemberID%257D%257D`
   }], [approval])).toThrow();
   expect(() => validateDiscoveryProducts([{
     ...commissioned,

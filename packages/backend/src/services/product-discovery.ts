@@ -23,7 +23,7 @@ export interface ApprovedTrackingHost {
 
 const PRODUCT_FIELDS = ['id', 'brand', 'name', 'category', 'merchant', 'url', 'isCommissioned'];
 const CATEGORIES = new Set<DiscoveryCategory>(['Cleanser', 'Moisturizer', 'Sunscreen']);
-const PERSONAL_QUERY_KEY = /^(?:uid|user_?id|(?:partner_?)?customer_?id|pcid|email|phone|ip(?:_?address)?|device_?id|advertising_?id|idfa|gaid|session_?id|skin|photo|scan)$/i;
+const PERSONAL_QUERY_KEY = /^(?:uid|user_?id|(?:partner_?)?(?:customer|cust)_?id|pcid|email|phone|ip(?:_?address)?|device_?id|advertising_?id|idfa|gaid|session_?id|skin|photo|scan)$/i;
 
 function isDirectUltaProductUrl(url: URL): boolean {
   return url.hostname === 'www.ulta.com' &&
@@ -111,9 +111,15 @@ export function validateDiscoveryProducts(
     }
     if (record.isCommissioned) {
       const approval = approvedTrackingHosts.find(item => item.host === url.hostname);
-      let decodedUrl: string;
+      let decodedUrl = record.url;
       try {
-        decodedUrl = decodeURIComponent(record.url);
+        // Impact can double-encode dynamic placeholders (for example,
+        // %257B%257BMemberID%257D%257D). Never ship a variable URL.
+        for (let pass = 0; pass < 4; pass += 1) {
+          const next = decodeURIComponent(decodedUrl);
+          if (next === decodedUrl) break;
+          decodedUrl = next;
+        }
       } catch {
         throw new Error('Invalid partner tracking URL encoding');
       }
