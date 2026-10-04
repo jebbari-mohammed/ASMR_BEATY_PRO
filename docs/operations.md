@@ -6,7 +6,7 @@
 2. Review the [release checklist](release-checklist.md), the exact Git diff, the App Store privacy form, and Google Play Data safety form. Do not promote the app while any release gate is open.
 3. Ensure `REVENUECAT_SECRET_API_KEY` and `REVENUECAT_WEBHOOK_TOKEN` have current versions in Firebase Secret Manager. Set the RevenueCat webhook URL to the deployed `onRevenueCatWebhook` endpoint and test a signed test event. Never print or commit secret values.
 4. Functions, Firestore rules, Storage rules, and Hosting are deployed to `asmr-skin-coach`. Recheck live `/privacy`, `/terms`, `/support`, and `/delete-account`; verify email and paid access on signed devices before rollout.
-5. Use the matching Android upload key for the version code 9 App Bundle. Keep the original keystore backed up securely. iOS build `1.0.1 (8)` is In Testing for Team `6SUDVC57MM` in the owner-only TestFlight group; Android `1.0.1 (9)` is on the one-person Play internal list. Confirm the membership screen, store purchases, App Check, and deletion on physical hardware before public release.
+5. Use the matching Android upload key for the version code 10 App Bundle. Keep the original keystore backed up securely. iOS build `1.0.1 (9)` is In Testing for Team `6SUDVC57MM` in the one-person owner-only TestFlight group; Android `1.0.1 (10)` is on the one-person Play internal list. Confirm the membership screen, store purchases, App Check, and deletion on physical hardware before public release.
 6. Submit the first Apple subscription group with the app version. Use a verified, unprivileged reviewer account supplied through the stores' review fields.
 
 ## Beta and launch checks
