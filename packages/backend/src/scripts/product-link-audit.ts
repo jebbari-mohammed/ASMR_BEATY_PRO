@@ -116,7 +116,7 @@ export async function auditPartnerDestination(
   probe: Probe = probeProductLink
 ): Promise<void> {
   const expected = new URL(directProductUrl(expectedDestination));
-  const allowedHosts = new Set([...approvedHosts.map(item => item.host), 'www.ulta.com']);
+  const allowedHosts = new Set([...approvedHosts.map(item => item.host), 'ulta.com', 'www.ulta.com']);
   const seen = new Set<string>();
   let current = new URL(trackingUrl);
   for (let hop = 0; hop < 7; hop += 1) {
@@ -130,7 +130,7 @@ export async function auditPartnerDestination(
       current = new URL(response.location, current);
       continue;
     }
-    if (response.status < 200 || response.status >= 300) {
+    if (response.status !== 200) {
       throw new Error(`Partner link returned HTTP ${response.status}`);
     }
     if (current.hostname !== expected.hostname || current.pathname !== expected.pathname) {

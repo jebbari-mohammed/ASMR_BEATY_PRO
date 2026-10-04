@@ -72,6 +72,7 @@ test.each([
   ['insecure redirect', { status: 302, location: 'http://www.ulta.com/p/other' }],
   ['missing redirect', { status: 302 }],
   ['not found', { status: 404 }],
+  ['empty response', { status: 204 }],
   ['tracking page', { status: 200 }]
 ])('redirect audit refuses %s', async (_name, first) => {
   await expect(auditPartnerDestination(partner.url, direct.url, [approval],
@@ -84,6 +85,17 @@ test('redirect audit refuses a different product, even on Ulta', async () => {
       ? { status: 302, location: DEFAULT_US_DISCOVERY_PRODUCTS[1].url }
       : { status: 200 }
   )).rejects.toThrow('expected Ulta product');
+});
+
+test('redirect audit permits a merchant canonicalization hop but still requires the exact final product', async () => {
+  const visited: string[] = [];
+  await auditPartnerDestination(partner.url, direct.url, [approval], async url => {
+    visited.push(url.href);
+    if (url.hostname === approval.host) return { status: 302, location: `https://ulta.com${new URL(direct.url).pathname}` };
+    if (url.hostname === 'ulta.com') return { status: 301, location: direct.url };
+    return { status: 200 };
+  });
+  expect(visited).toEqual([partner.url, `https://ulta.com${new URL(direct.url).pathname}`, direct.url]);
 });
 
 test('redirect audit refuses loops', async () => {

@@ -106,8 +106,8 @@ product URL. For example, the shape is:
 
 The values above are format placeholders, **not usable links**. Run `publish`
 then `publish --apply` as above. Both commands now make a bounded HTTPS check
-of each commissioned link, follow only approved tracking hosts, and require a
-successful response at the *expected* Ulta product path. A wrong product,
+of each commissioned link, follow only approved tracking and Ulta merchant
+hosts, and require an HTTP 200 response at the *expected* Ulta product path. A wrong product,
 broken link, unknown redirect host, insecure redirect, redirect loop, or
 network block fails closed without publishing. The probe pins public IPv4
 addresses, so DNS rebinding cannot send it to a private service. It uses no
