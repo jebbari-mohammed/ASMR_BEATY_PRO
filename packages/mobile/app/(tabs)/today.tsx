@@ -22,6 +22,7 @@ const localDayKey = () => {
 
 type DisplayStep = RoutineStep & { completed: boolean };
 type PendingStep = { day: string; completed: boolean; operation: number; settled: boolean };
+type DataIdentity = { uid: string; day: string };
 
 function iconFor(category: RoutineStep['category']): keyof typeof Ionicons.glyphMap {
   return ({ Cleanse: 'water-outline', Hydrate: 'sparkles-outline', Treat: 'leaf-outline', Protect: 'shield-checkmark-outline', Other: 'ellipse-outline' } as const)[category];
@@ -32,15 +33,23 @@ export default function TodayScreen() {
   const { height: windowHeight } = useWindowDimensions();
   const [steps, setSteps] = useState<DisplayStep[]>(STARTER_STEPS.map(step => ({ ...step, completed: false })));
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [syncPending, setSyncPending] = useState(false);
   const [showSyncNotice, setShowSyncNotice] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [dayRevision, setDayRevision] = useState(0);
+  const [reloadRevision, setReloadRevision] = useState(0);
   const [playerPeriod, setPlayerPeriod] = useState<'morning' | 'evening' | null>(null);
   const [playerIndex, setPlayerIndex] = useState(0);
   const [starterPlan, setStarterPlan] = useState<StarterPlan | null>(null);
+  const [authUid, setAuthUid] = useState(auth().currentUser?.uid ?? null);
+  const [requestIdentity, setRequestIdentity] = useState<DataIdentity | null>(null);
+  const [loadedIdentity, setLoadedIdentity] = useState<DataIdentity | null>(null);
   const currentDay = useRef(localDayKey());
+  const readyIdentity = useRef<DataIdentity | null>(null);
+  const cachedUid = useRef<string | null>(auth().currentUser?.uid ?? null);
+  const identityEpoch = useRef(0);
   const routineSteps = useRef<RoutineStep[]>(STARTER_STEPS);
   const latestCompleted = useRef(new Set<string>());
   const pendingSteps = useRef(new Map<string, PendingStep>());
@@ -53,6 +62,32 @@ export default function TodayScreen() {
     mounted.current = true;
     return () => { mounted.current = false; };
   }, []);
+
+  useEffect(() => auth().onAuthStateChanged(user => {
+    const uid = user?.uid ?? null;
+    if (cachedUid.current !== uid) {
+      ++identityEpoch.current;
+      cachedUid.current = uid;
+      readyIdentity.current = null;
+      routineSteps.current = STARTER_STEPS;
+      latestCompleted.current = new Set();
+      pendingSteps.current.clear();
+      latestIntent.current.clear();
+      snapshotHasPendingWrites.current = false;
+      setSteps(STARTER_STEPS.map(step => ({ ...step, completed: false })));
+      setRequestIdentity(null);
+      setLoadedIdentity(null);
+      setStarterPlan(null);
+      setLoading(true);
+      setRefreshing(false);
+      setLoadError(null);
+      setSyncPending(false);
+      setSyncError(null);
+      setPlayerPeriod(null);
+      setPlayerIndex(0);
+    }
+    setAuthUid(uid);
+  }), []);
 
   useEffect(() => {
     if (!syncPending) {
@@ -80,32 +115,69 @@ export default function TodayScreen() {
   useFocusEffect(useCallback(() => {
     let active = true;
     let unsubscribe = () => {};
+    let routineLoaded = false;
+    let logLoaded = false;
+    let failed = false;
+    let initialReady = false;
     const day = localDayKey();
+    const uid = authUid;
+    if (!uid || auth().currentUser?.uid !== uid) {
+      setRequestIdentity(null);
+      setLoading(true);
+      setRefreshing(false);
+      return () => { active = false; };
+    }
+    const sessionEpoch = identityEpoch.current;
     currentDay.current = day;
-    setLoading(true);
+    setRequestIdentity({ uid, day });
+    if (readyIdentity.current?.uid === uid && readyIdentity.current.day === day) setRefreshing(true);
+    else setLoading(true);
+    setLoadError(null);
     setSyncError(null);
-    RoutineService.get().then(routine => {
-      if (!active) return;
+    const stillCurrent = () => active && identityEpoch.current === sessionEpoch && auth().currentUser?.uid === uid;
+    const fail = (cause: unknown) => {
+      if (!stillCurrent() || failed) return;
+      failed = true;
+      unsubscribe();
+      console.warn('[Today] load failed', cause);
+      setLoadError(cause instanceof Error ? cause.message : String(cause));
+      setLoading(false);
+      setRefreshing(false);
+    };
+    const applyWhenReady = () => {
+      if (!stillCurrent() || failed || !routineLoaded || !logLoaded) return;
+      applyCurrentLog();
+      if (!initialReady) {
+        initialReady = true;
+        readyIdentity.current = { uid, day };
+        setLoadedIdentity({ uid, day });
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
+    // Start both reads together. The listener usually has a local snapshot
+    // ready before the routine fetch completes, even on a slow connection.
+    void RoutineService.get().then(routine => {
+      if (!stillCurrent() || failed) return;
       routineSteps.current = routine;
+      routineLoaded = true;
+      applyWhenReady();
+    }).catch(fail);
+    try {
       unsubscribe = RoutineLogService.watch(day, ({ log, pendingWrites }) => {
-        if (!active) return;
+        if (!stillCurrent() || failed) return;
         latestCompleted.current = new Set(log?.completedIds ?? []);
         snapshotHasPendingWrites.current = pendingWrites;
-        applyCurrentLog();
-        setLoadError(null);
-        setLoading(false);
-      }, cause => {
-        if (!active) return;
-        setLoadError(cause.message);
-        setLoading(false);
-      });
-    }).catch((cause) => { if (active) { console.warn('[Today] load failed', cause); setLoadError(cause instanceof Error ? cause.message : String(cause)); setLoading(false); } });
-    const uid = auth().currentUser?.uid;
-    if (uid) OnboardingService.getStarterPreferences(uid).then(answers => {
-      if (active) setStarterPlan(answers ? buildStarterPlan(answers) : null);
-    }).catch(() => { if (active) setStarterPlan(null); });
+        logLoaded = true;
+        applyWhenReady();
+      }, fail);
+      if (failed) unsubscribe();
+    } catch (cause) { fail(cause); }
+    OnboardingService.getStarterPreferences(uid).then(answers => {
+      if (stillCurrent()) setStarterPlan(answers ? buildStarterPlan(answers) : null);
+    }).catch(() => { if (stillCurrent()) setStarterPlan(null); });
     return () => { active = false; unsubscribe(); };
-  }, [applyCurrentLog, dayRevision]));
+  }, [applyCurrentLog, authUid, dayRevision, reloadRevision]));
 
   useEffect(() => {
     const checkDay = () => {
@@ -131,8 +203,11 @@ export default function TodayScreen() {
       setDayRevision(revision => revision + 1);
       return false;
     }
+    const uid = auth().currentUser?.uid;
+    if (!uid || readyIdentity.current?.uid !== uid || readyIdentity.current.day !== day) return false;
+    const sessionEpoch = identityEpoch.current;
     const step = steps.find(item => item.id === id);
-    if (!step || loading || loadError) return false;
+    if (!step || loading || refreshing || loadError) return false;
     const previous = pendingSteps.current.get(id);
     const completed = !(previous?.day === day ? previous.completed : step.completed);
     const operation = ++operationId.current;
@@ -142,8 +217,9 @@ export default function TodayScreen() {
     setSyncError(null);
     applyCurrentLog();
     void RoutineLogService.setStep(day, id, completed, routineSteps.current.map(item => item.id),
-      () => latestIntent.current.get(intentKey))
+      () => identityEpoch.current === sessionEpoch && auth().currentUser?.uid === uid ? latestIntent.current.get(intentKey) : undefined)
       .then(() => {
+        if (identityEpoch.current !== sessionEpoch || auth().currentUser?.uid !== uid) return;
         const pending = pendingSteps.current.get(id);
         if (pending?.operation === operation) {
           pendingSteps.current.set(id, { ...pending, settled: true });
@@ -151,6 +227,7 @@ export default function TodayScreen() {
         }
       })
       .catch(cause => {
+        if (identityEpoch.current !== sessionEpoch || auth().currentUser?.uid !== uid) return;
         if (pendingSteps.current.get(id)?.operation !== operation) {
           if (cause instanceof RoutineLogCorrectionError && mounted.current && currentDay.current === day) {
             setSyncError('Your last step change could not sync. Check your connection or membership, then try again.');
@@ -167,6 +244,8 @@ export default function TodayScreen() {
   }
 
   function openPlayer(period: 'morning' | 'evening') {
+    if (readyIdentity.current?.uid !== auth().currentUser?.uid || readyIdentity.current?.day !== localDayKey()) return;
+    if (loading || refreshing || loadError) return;
     const periodSteps = steps.filter(step => step.period === period);
     if (!periodSteps.length) return;
     const firstIncomplete = periodSteps.findIndex(step => !step.completed);
@@ -181,6 +260,8 @@ export default function TodayScreen() {
   }
 
   function completePlayerStep() {
+    if (readyIdentity.current?.uid !== auth().currentUser?.uid || readyIdentity.current?.day !== localDayKey()) return;
+    if (refreshing) return;
     const current = steps.filter(step => step.period === playerPeriod)[playerIndex];
     if (!current) return;
     if (current.completed || toggleStep(current.id)) nextPlayerStep();
@@ -193,6 +274,14 @@ export default function TodayScreen() {
   const progressPercent = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
   const playerSteps = steps.filter(step => step.period === playerPeriod);
   const playerStep = playerSteps[playerIndex];
+  const liveUid = auth().currentUser?.uid ?? null;
+  const liveDay = localDayKey();
+  // Navigation may preserve this tab across sign-out, so gate every cached
+  // view against Firebase's live identity before the auth listener rerenders.
+  const sameAuthSession = !!liveUid && authUid === liveUid;
+  const requestIsCurrent = sameAuthSession && requestIdentity?.uid === liveUid && requestIdentity.day === liveDay;
+  const dataIsCurrent = sameAuthSession && loadedIdentity?.uid === liveUid && loadedIdentity.day === liveDay;
+  const showLoading = !requestIsCurrent || loading || (!dataIsCurrent && !loadError);
 
   return (
     <View style={styles.screen}>
@@ -225,7 +314,7 @@ export default function TodayScreen() {
           </ImageBackground>
         </View>
 
-        {starterPlan && <View style={styles.startingPath}>
+        {dataIsCurrent && starterPlan && <View style={styles.startingPath}>
           <Text style={styles.startingEyebrow}>MADE FROM YOUR ANSWERS</Text>
           <Text style={styles.startingTitle}>{starterPlan.ritualName}</Text>
           <Text style={styles.startingIntro}>Your first-week path</Text>
@@ -235,7 +324,8 @@ export default function TodayScreen() {
           </View>)}
         </View>}
 
-        {loading ? <ActivityIndicator style={{ marginTop: 34 }} color={colors.primary} /> : loadError ? <Card variant="elevated" style={styles.streakCard}><Text style={styles.sectionTitle}>Could not load your routine</Text><Text style={styles.stepDetail}>{__DEV__ ? loadError : 'Check your connection and reopen Today.'}</Text></Card> : <>
+        {showLoading ? <ActivityIndicator style={{ marginTop: 34 }} color={colors.primary} /> : loadError ? <Card variant="elevated" style={styles.streakCard}><Text style={styles.sectionTitle}>Could not load your routine</Text><Text style={styles.stepDetail}>{__DEV__ ? loadError : 'Check your connection and try again.'}</Text><Pressable accessibilityRole="button" onPress={() => setReloadRevision(revision => revision + 1)} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable></Card> : <>
+        {refreshing && <View style={styles.refreshNotice} accessibilityRole="progressbar" accessibilityLabel="Updating your ritual"><ActivityIndicator size="small" color={colors.primary} /><Text style={styles.refreshText}>Updating your ritual</Text></View>}
         {showSyncNotice && <Text accessibilityLiveRegion="polite" style={styles.syncNotice}>Changes on this device are waiting to sync.</Text>}
         {syncError && <Text accessibilityRole="alert" style={styles.syncError}>{syncError}</Text>}
         {/* Daily completion card */}
@@ -279,16 +369,17 @@ export default function TodayScreen() {
             <Ionicons name="sunny-outline" size={18} color={colors.goldDark} style={styles.sectionIcon} />
             <Text style={styles.sectionTitle}>Morning Ritual</Text>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Start guided morning ritual" onPress={() => openPlayer('morning')} disabled={!morningSteps.length} style={styles.startPlayer}><Ionicons name="play" size={12} color={colors.primary} /><Text style={styles.startPlayerText}>Guide me</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Start guided morning ritual" onPress={() => openPlayer('morning')} disabled={!morningSteps.length || refreshing} style={styles.startPlayer}><Ionicons name="play" size={12} color={colors.primary} /><Text style={styles.startPlayerText}>Guide me</Text></Pressable>
         </View>
 
         {morningSteps.map((step, idx) => (
           <TouchableOpacity
             key={step.id}
             accessibilityRole="checkbox"
-            accessibilityState={{ checked: step.completed }}
+            accessibilityState={{ checked: step.completed, disabled: refreshing }}
             accessibilityLabel={`${step.name}, morning routine`}
             activeOpacity={0.78}
+            disabled={refreshing}
             onPress={() => toggleStep(step.id)}
             style={[styles.stepCard, step.completed && styles.stepCardCompleted]}
           >
@@ -325,16 +416,17 @@ export default function TodayScreen() {
             <Ionicons name="moon-outline" size={18} color={colors.primaryLight} style={styles.sectionIcon} />
             <Text style={styles.sectionTitle}>Evening Ritual</Text>
           </View>
-          <Pressable accessibilityRole="button" accessibilityLabel="Start guided evening ritual" onPress={() => openPlayer('evening')} disabled={!eveningSteps.length} style={styles.startPlayer}><Ionicons name="play" size={12} color={colors.primary} /><Text style={styles.startPlayerText}>Guide me</Text></Pressable>
+          <Pressable accessibilityRole="button" accessibilityLabel="Start guided evening ritual" onPress={() => openPlayer('evening')} disabled={!eveningSteps.length || refreshing} style={styles.startPlayer}><Ionicons name="play" size={12} color={colors.primary} /><Text style={styles.startPlayerText}>Guide me</Text></Pressable>
         </View>
 
         {eveningSteps.map((step, idx) => (
           <TouchableOpacity
             key={step.id}
             accessibilityRole="checkbox"
-            accessibilityState={{ checked: step.completed }}
+            accessibilityState={{ checked: step.completed, disabled: refreshing }}
             accessibilityLabel={`${step.name}, evening routine`}
             activeOpacity={0.78}
+            disabled={refreshing}
             onPress={() => toggleStep(step.id)}
             style={[styles.stepCard, step.completed && styles.stepCardCompleted]}
           >
@@ -368,7 +460,7 @@ export default function TodayScreen() {
         </>}
         <DisclaimerBar showAffiliate={false} />
       </ScrollView>
-      <Modal visible={playerPeriod !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setPlayerPeriod(null)}>
+      <Modal visible={dataIsCurrent && playerPeriod !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setPlayerPeriod(null)}>
         <View style={styles.playerScreen}>
           <ScrollView style={styles.playerScroll} contentContainerStyle={{ paddingBottom: 18 }}>
             <ImageBackground source={playerPeriod === 'morning' ? localImages.editorialHero : localImages.editorialRoutine} style={[styles.playerHero, { height: Math.min(300, Math.max(225, windowHeight * 0.34)), paddingTop: insets.top + 16 }]} resizeMode="cover">
@@ -389,7 +481,7 @@ export default function TodayScreen() {
             </View>}
           </ScrollView>
           {playerStep && <View style={[styles.playerActions, { paddingBottom: Math.max(insets.bottom, 14) }]}>
-            <Pressable accessibilityRole="button" onPress={completePlayerStep} style={styles.playerPrimary}><Text style={styles.playerPrimaryText}>{playerStep.completed ? playerIndex + 1 === playerSteps.length ? 'Finish ritual' : 'Next step' : 'Mark done and continue'}</Text></Pressable>
+            <Pressable accessibilityRole="button" disabled={refreshing} onPress={completePlayerStep} style={styles.playerPrimary}><Text style={styles.playerPrimaryText}>{playerStep.completed ? playerIndex + 1 === playerSteps.length ? 'Finish ritual' : 'Next step' : 'Mark done and continue'}</Text></Pressable>
             <View style={styles.playerSecondaryRow}>
               <Pressable accessibilityRole="button" disabled={playerIndex === 0} onPress={() => setPlayerIndex(index => index - 1)} style={styles.playerSecondary}><Text style={[styles.playerSecondaryText, playerIndex === 0 && styles.playerDisabled]}>Previous</Text></Pressable>
               <Pressable accessibilityRole="button" onPress={nextPlayerStep} style={styles.playerSecondary}><Text style={styles.playerSecondaryText}>{playerIndex + 1 === playerSteps.length ? 'Finish for now' : 'Skip for now'}</Text></Pressable>
@@ -414,6 +506,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.huge
   },
   syncNotice: { color: colors.primary, backgroundColor: colors.primarySoft, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 18 },
+  refreshNotice: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
+  refreshText: { color: colors.textSecondary, fontSize: 12 },
+  retryButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingRight: 16 },
+  retryText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   syncError: { color: '#A64032', backgroundColor: colors.terracottaLight, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 18 },
   startingPath: { backgroundColor: '#FBFAF6', borderColor: '#E4E4D9', borderWidth: 1, borderRadius: 20, padding: 18, marginBottom: spacing.md },
   startingEyebrow: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.5, fontWeight: '800' },
