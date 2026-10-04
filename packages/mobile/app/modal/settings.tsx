@@ -30,6 +30,11 @@ import { UnsafeLocalCleanupError } from '../../src/services/access-signout';
 import { ReminderService, ReminderPreferences, ReminderTime } from '../../src/services/reminder-service';
 import { clearLegacyRoutineCheckoffs } from '../../src/services/legacy-routine-cleanup';
 
+// The server may need several minutes to remove a large account. Keep this
+// request alive beyond the callable's 300-second limit so the app can receive
+// its confirmed result instead of reporting an uncertain timeout at 70 seconds.
+const ACCOUNT_DELETION_TIMEOUT_MS = 330_000;
+
 export default function SettingsModal() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -193,7 +198,9 @@ export default function SettingsModal() {
           throw new Error('Account changed while confirming deletion.');
         }
         cloudRequestStarted = true;
-        const result = await functions().httpsCallable('deleteUserAccount')();
+        const result = await functions().httpsCallable('deleteUserAccount', {
+          timeout: ACCOUNT_DELETION_TIMEOUT_MS
+        })();
         if ((result.data as { deleted?: boolean } | undefined)?.deleted !== true) {
           throw new Error('Account deletion could not be confirmed. Please try again.');
         }
@@ -491,6 +498,9 @@ export default function SettingsModal() {
               {isDeleting ? <ActivityIndicator color={colors.surface} /> :
                 <Text style={styles.deleteModalActionText}>{cloudAccountDeleted ? 'Retry device cleanup' : 'Delete my account'}</Text>}
             </TouchableOpacity>
+            {isDeleting && <Text accessibilityRole="alert" style={styles.deleteModalCopy}>
+              {cloudAccountDeleted ? 'Clearing this device…' : 'Deleting your cloud account… This may take several minutes.'}
+            </Text>}
             <TouchableOpacity style={styles.deleteModalCancel} disabled={isDeleting} onPress={closeDeleteDialog} accessibilityRole="button">
               <Text style={styles.deleteModalCancelText}>{cloudAccountDeleted ? 'Close for now' : 'Keep my account'}</Text>
             </TouchableOpacity>

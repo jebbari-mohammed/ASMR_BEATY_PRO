@@ -119,7 +119,7 @@ export const resolveAffiliateOffer = onCall({ enforceAppCheck: true }, async () 
 });
 
 /** Remove a user's cloud records and Firebase account. */
-export const deleteUserAccount = onCall({ enforceAppCheck: true }, async (request) => {
+export const deleteUserAccount = onCall({ enforceAppCheck: true, timeoutSeconds: 300 }, async (request) => {
   if (!request.auth) {
     throw new HttpsError('unauthenticated', 'Authentication required for account deletion.');
   }
