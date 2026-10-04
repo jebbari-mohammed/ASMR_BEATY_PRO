@@ -12,6 +12,7 @@ interface RevenueCatEntitlement extends RevenueCatPurchase {
 }
 
 interface RevenueCatCustomer {
+  request_date_ms?: number;
   subscriber?: {
     entitlements?: Record<string, RevenueCatEntitlement>;
     subscriptions?: Record<string, RevenueCatPurchase>;
@@ -20,6 +21,11 @@ interface RevenueCatCustomer {
 
 export interface VerifiedEntitlement extends UserSubscriptionEntitlement {
   expiresAtMs: number | null;
+}
+
+/** A store result with RevenueCat's own response observation time. */
+export interface StoreVerifiedEntitlement extends VerifiedEntitlement {
+  requestDateMs: number;
 }
 
 /** Only transport failures and retryable vendor responses permit a cached read. */
@@ -84,7 +90,7 @@ export class RevenueCatVerifier {
     private readonly now: () => number = Date.now
   ) {}
 
-  async verify(userId: string): Promise<VerifiedEntitlement> {
+  async verify(userId: string): Promise<StoreVerifiedEntitlement> {
     // A malformed secret can itself make fetch throw TypeError. Reject that
     // before the transport catch so configuration errors never use a cache.
     if (!this.secretApiKey || !/^[\x21-\x7e]+$/.test(this.secretApiKey)) {
@@ -119,6 +125,8 @@ export class RevenueCatVerifier {
 
     const body = (await response.json()) as RevenueCatCustomer;
     if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        !Number.isSafeInteger(body.request_date_ms) ||
+        (body.request_date_ms as number) <= 0 ||
         !body.subscriber || typeof body.subscriber !== 'object' || Array.isArray(body.subscriber) ||
         !body.subscriber.entitlements || typeof body.subscriber.entitlements !== 'object' ||
         Array.isArray(body.subscriber.entitlements) ||
@@ -127,8 +135,9 @@ export class RevenueCatVerifier {
            body.subscriber.subscriptions === null || Array.isArray(body.subscriber.subscriptions)))) {
       throw new Error('RevenueCat response malformed');
     }
+    const requestDateMs = body.request_date_ms as number;
     const entitlement = body.subscriber?.entitlements?.asmr_beaty_pro_pro;
-    if (!entitlement) return noAccess();
+    if (!entitlement) return { ...noAccess(), requestDateMs };
     if (typeof entitlement !== 'object' || typeof entitlement.purchase_date !== 'string' ||
         typeof entitlement.product_identifier !== 'string') throw new Error('RevenueCat response malformed');
 
@@ -153,11 +162,12 @@ export class RevenueCatVerifier {
     }
 
     const valid = candidates.filter(candidate => candidate.isPro);
-    if (valid.length === 0) return noAccess();
+    if (valid.length === 0) return { ...noAccess(), requestDateMs };
     const active = valid.filter(candidate => candidate.status === 'active');
     const ranked = active.length > 0 ? active : valid;
-    return ranked.reduce((best, candidate) =>
+    const best = ranked.reduce((best, candidate) =>
       (candidate.expiresAtMs ?? 0) > (best.expiresAtMs ?? 0) ? candidate : best
     );
+    return { ...best, requestDateMs };
   }
 }

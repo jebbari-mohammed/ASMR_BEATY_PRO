@@ -5,7 +5,7 @@ const now = Date.parse('2026-09-27T12:00:00Z');
 function subscriberResponse(subscriber: Record<string, unknown>) {
   return jest.fn().mockResolvedValue({
     ok: true,
-    json: async () => ({ subscriber })
+    json: async () => ({ request_date_ms: now, subscriber })
   }) as unknown as typeof fetch;
 }
 
@@ -17,6 +17,7 @@ function response(
   return jest.fn().mockResolvedValue({
     ok: true,
     json: async () => ({
+      request_date_ms: now,
       subscriber: {
         entitlements: {
           asmr_beaty_pro_pro: {
@@ -68,7 +69,8 @@ test('approved active subscription survives a coexisting Test Store lifetime pro
     isPro: true,
     status: 'active',
     tier: 'PRO_ANNUAL',
-    expiresAtMs: Date.parse('2026-10-01T00:00:00Z')
+    expiresAtMs: Date.parse('2026-10-01T00:00:00Z'),
+    requestDateMs: now
   });
 });
 
@@ -83,7 +85,7 @@ test('an approved active subscription does not grant access without the Pro enti
     }
   });
   await expect(new RevenueCatVerifier('server-secret', request, () => now).verify('user-123'))
-    .resolves.toEqual({ isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null });
+    .resolves.toEqual({ isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null, requestDateMs: now });
 });
 
 test('subscription grace period is honored when the entitlement projects another product', async () => {
@@ -108,7 +110,8 @@ test('subscription grace period is honored when the entitlement projects another
     isPro: true,
     status: 'grace_period',
     tier: 'PRO_MONTHLY',
-    expiresAtMs: Date.parse('2026-09-29T00:00:00Z')
+    expiresAtMs: Date.parse('2026-09-29T00:00:00Z'),
+    requestDateMs: now
   });
 });
 
@@ -135,7 +138,7 @@ test.each([
     }
   });
   await expect(new RevenueCatVerifier('server-secret', request, () => now).verify('user-123'))
-    .resolves.toEqual({ isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null });
+    .resolves.toEqual({ isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null, requestDateMs: now });
 });
 
 test('a refunded subscription record overrides a stale active entitlement projection', async () => {
@@ -156,7 +159,7 @@ test('a refunded subscription record overrides a stale active entitlement projec
     }
   });
   await expect(new RevenueCatVerifier('server-secret', request, () => now).verify('user-123'))
-    .resolves.toEqual({ isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null });
+    .resolves.toEqual({ isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null, requestDateMs: now });
 });
 
 test.each([
@@ -180,7 +183,7 @@ test.each([
   const result = await new RevenueCatVerifier(
     'server-secret', response(expiration, null, productId), () => now
   ).verify('user-123');
-  expect(result).toEqual({ isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null });
+  expect(result).toEqual({ isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null, requestDateMs: now });
 });
 
 test('grace period stays active until its verified expiry', async () => {
@@ -236,4 +239,13 @@ test('network and timeout failures are retryable, while malformed responses are 
   const invalidJson = jest.fn().mockResolvedValue({ ok: true, json: async () => { throw new SyntaxError('bad JSON'); } }) as unknown as typeof fetch;
   await expect(new RevenueCatVerifier('server-secret', invalidJson).verify('user-123'))
     .rejects.not.toBeInstanceOf(RevenueCatTransientError);
+});
+
+test('missing vendor observation time cannot produce an unordered cache write', async () => {
+  const missingDate = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ subscriber: { entitlements: {} } })
+  }) as unknown as typeof fetch;
+  await expect(new RevenueCatVerifier('server-secret', missingDate).verify('user-123'))
+    .rejects.toThrow('response malformed');
 });

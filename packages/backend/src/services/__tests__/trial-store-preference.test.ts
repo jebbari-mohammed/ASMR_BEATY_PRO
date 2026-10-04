@@ -1,17 +1,19 @@
 import * as admin from 'firebase-admin';
 import { TrialAccountUnavailableError } from '../app-free-trial.js';
 import { TrialStorePreference } from '../trial-store-preference.js';
-import type { VerifiedEntitlement } from '../revenuecat-verifier.js';
+import type { StoreVerifiedEntitlement } from '../revenuecat-verifier.js';
+import { StaleStoreVerificationError } from '../verified-entitlement-store.js';
 
 const NOW_MS = 1_800_000_000_000;
-const paid: VerifiedEntitlement = {
+const paid: StoreVerifiedEntitlement = {
   isPro: true,
   status: 'active',
   tier: 'PRO_ANNUAL',
-  expiresAtMs: NOW_MS + 30 * 24 * 60 * 60 * 1000
+  expiresAtMs: NOW_MS + 30 * 24 * 60 * 60 * 1000,
+  requestDateMs: NOW_MS
 };
-const refunded: VerifiedEntitlement = {
-  isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null
+const refunded: StoreVerifiedEntitlement = {
+  isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null, requestDateMs: NOW_MS + 1
 };
 
 function setup({
@@ -45,7 +47,8 @@ function setup({
 
 test('a fresh store check identifies a genuine purchase made during the app trial', async () => {
   const { preference, verifyStore, cacheStore } = setup();
-  await expect(preference.current('user_123')).resolves.toEqual({ ...paid, source: 'revenuecat_server' });
+  const { requestDateMs: _requestDateMs, ...paidPublic } = paid;
+  await expect(preference.current('user_123')).resolves.toEqual({ ...paidPublic, source: 'revenuecat_server' });
   expect(verifyStore).toHaveBeenCalledWith('user_123');
   expect(cacheStore).toHaveBeenCalledWith('user_123', paid);
 });
@@ -85,4 +88,10 @@ test('a vendor outage does not interrupt valid app-trial access', async () => {
 test('an account deleted during store reconciliation cannot receive paid access', async () => {
   const { preference } = setup({ cacheWriteSucceeds: false });
   await expect(preference.current('user_123')).rejects.toBeInstanceOf(TrialAccountUnavailableError);
+});
+
+test('a stale paid check cannot replace newer revocation during a valid app trial', async () => {
+  const { preference, cacheStore } = setup();
+  cacheStore.mockRejectedValueOnce(new StaleStoreVerificationError());
+  await expect(preference.current('user_123')).resolves.toBeNull();
 });

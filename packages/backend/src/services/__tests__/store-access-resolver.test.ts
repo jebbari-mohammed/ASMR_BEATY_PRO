@@ -1,19 +1,22 @@
 import { StoreAccessResolver } from '../store-access-resolver.js';
-import { RevenueCatTransientError, RevenueCatVerifier, type VerifiedEntitlement } from '../revenuecat-verifier.js';
+import { RevenueCatTransientError, RevenueCatVerifier, type StoreVerifiedEntitlement } from '../revenuecat-verifier.js';
 import { TrialAccountUnavailableError } from '../app-free-trial.js';
 
 const NOW_MS = 1_800_000_000_000;
-const paid: VerifiedEntitlement = {
-  isPro: true, status: 'active', tier: 'PRO_MONTHLY', expiresAtMs: NOW_MS + 24 * 60 * 60 * 1000
+const paid: StoreVerifiedEntitlement = {
+  isPro: true, status: 'active', tier: 'PRO_MONTHLY', expiresAtMs: NOW_MS + 24 * 60 * 60 * 1000,
+  requestDateMs: NOW_MS
 };
-const revoked: VerifiedEntitlement = {
-  isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null
+const revoked: StoreVerifiedEntitlement = {
+  isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null, requestDateMs: NOW_MS + 1
 };
-const cached = { ...paid, source: 'revenuecat_cache' as const };
+const { requestDateMs: _paidRequestDateMs, ...paidPublic } = paid;
+const { requestDateMs: _revokedRequestDateMs, ...revokedPublic } = revoked;
+const cached = { ...paidPublic, source: 'revenuecat_cache' as const };
 
 function setup() {
-  const verifyStore = jest.fn<Promise<VerifiedEntitlement>, [string]>().mockResolvedValue(paid);
-  const cacheStore = jest.fn<Promise<boolean>, [string, VerifiedEntitlement]>().mockResolvedValue(true);
+  const verifyStore = jest.fn<Promise<StoreVerifiedEntitlement>, [string]>().mockResolvedValue(paid);
+  const cacheStore = jest.fn<Promise<boolean>, [string, StoreVerifiedEntitlement]>().mockResolvedValue(true);
   const recentPaidAccess = jest.fn().mockResolvedValue(cached);
   return {
     resolver: new StoreAccessResolver(verifyStore, cacheStore, recentPaidAccess),
@@ -24,7 +27,7 @@ function setup() {
 test('a fresh server check writes the purchase', async () => {
   const { resolver, cacheStore, recentPaidAccess } = setup();
   await expect(resolver.current('alice', false)).resolves.toEqual({
-    ...paid, source: 'revenuecat_server'
+    ...paidPublic, source: 'revenuecat_server'
   });
   expect(cacheStore).toHaveBeenCalledWith('alice', paid);
   expect(recentPaidAccess).not.toHaveBeenCalled();
@@ -117,7 +120,7 @@ test('an explicit refund response clears the old purchase instead of falling bac
   const { resolver, verifyStore, cacheStore, recentPaidAccess } = setup();
   verifyStore.mockResolvedValueOnce(revoked);
   await expect(resolver.current('alice', false)).resolves.toEqual({
-    ...revoked, source: 'revenuecat_server'
+    ...revokedPublic, source: 'revenuecat_server'
   });
   expect(cacheStore).toHaveBeenCalledWith('alice', revoked);
   expect(recentPaidAccess).not.toHaveBeenCalled();

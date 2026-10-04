@@ -1,4 +1,4 @@
-import { RevenueCatTransientError, type VerifiedEntitlement } from './revenuecat-verifier.js';
+import { RevenueCatTransientError, type StoreVerifiedEntitlement, type VerifiedEntitlement } from './revenuecat-verifier.js';
 import { TrialAccountUnavailableError } from './app-free-trial.js';
 
 export type ResolvedStoreAccess = VerifiedEntitlement & {
@@ -8,13 +8,13 @@ export type ResolvedStoreAccess = VerifiedEntitlement & {
 /** A recent paid cache only bridges a failed vendor request for normal access. */
 export class StoreAccessResolver {
   constructor(
-    private readonly verifyStore: (userId: string) => Promise<VerifiedEntitlement>,
-    private readonly cacheStore: (userId: string, verified: VerifiedEntitlement) => Promise<boolean>,
+    private readonly verifyStore: (userId: string) => Promise<StoreVerifiedEntitlement>,
+    private readonly cacheStore: (userId: string, verified: StoreVerifiedEntitlement) => Promise<boolean>,
     private readonly recentPaidAccess: (userId: string) => Promise<ResolvedStoreAccess | null>
   ) {}
 
   async current(userId: string, purchaseOnly: boolean): Promise<ResolvedStoreAccess> {
-    let verified: VerifiedEntitlement;
+    let verified: StoreVerifiedEntitlement;
     try {
       verified = await this.verifyStore(userId);
     } catch (error) {
@@ -31,6 +31,7 @@ export class StoreAccessResolver {
     // A definitive no-access result replaces any old Pro cache. Cache write
     // failures or deletion guards cannot be bypassed with stale purchase data.
     if (!await this.cacheStore(userId, verified)) throw new TrialAccountUnavailableError();
-    return { ...verified, source: 'revenuecat_server' };
+    const { requestDateMs: _requestDateMs, ...access } = verified;
+    return { ...access, source: 'revenuecat_server' };
   }
 }

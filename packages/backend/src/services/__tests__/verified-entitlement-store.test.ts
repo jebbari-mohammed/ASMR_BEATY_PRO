@@ -1,12 +1,15 @@
 import * as admin from 'firebase-admin';
-import { VerifiedEntitlementStore } from '../verified-entitlement-store.js';
+import { StaleStoreVerificationError, VerifiedEntitlementStore } from '../verified-entitlement-store.js';
 import { PAID_CACHE_OUTAGE_WINDOW_MS } from '../verified-entitlement-store.js';
+import { StoreAccessResolver } from '../store-access-resolver.js';
+import type { StoreVerifiedEntitlement } from '../revenuecat-verifier.js';
 
 const verified = {
   isPro: true,
   status: 'active' as const,
-  tier: 'PRO_MONTHLY',
-  expiresAtMs: Date.now() + 60_000
+  tier: 'PRO_MONTHLY' as const,
+  expiresAtMs: Date.now() + 60_000,
+  requestDateMs: Date.now()
 };
 
 function setup({ accountExists = true, guardExists = false, profileExists = true, deleting = false } = {}) {
@@ -42,6 +45,7 @@ test('caches a verified entitlement for a live account', async () => {
   expect(set.mock.calls[0][1]).toMatchObject({
     isPro: true,
     source: 'revenuecat_server',
+    vendorRequestDateMs: verified.requestDateMs,
     lastEventType: 'RENEWAL'
   });
 });
@@ -68,6 +72,74 @@ test('transient Auth failures propagate so webhook delivery can retry', async ()
   await expect(store.cache('user_123', verified)).rejects.toThrow('Auth unavailable');
   expect(db.runTransaction).not.toHaveBeenCalled();
   expect(set).not.toHaveBeenCalled();
+});
+
+function orderedStoreFixture() {
+  const data = new Map<string, Record<string, unknown>>();
+  const ref = (path: string): any => ({
+    path,
+    collection: (name: string) => ({ doc: (id: string) => ref(`${path}/${name}/${id}`) })
+  });
+  const db: any = {
+    collection: (name: string) => ({ doc: (id: string) => ref(`${name}/${id}`) }),
+    runTransaction: async (operation: (transaction: any) => Promise<unknown>) => {
+      const writes: Array<{ path: string; value: Record<string, unknown> }> = [];
+      const transaction = {
+        get: async (document: { path: string }) => {
+          const value = data.get(document.path);
+          return { exists: value !== undefined, get: (field: string) => value?.[field] };
+        },
+        set: (document: { path: string }, value: Record<string, unknown>) => {
+          writes.push({ path: document.path, value });
+        }
+      };
+      const result = await operation(transaction);
+      for (const write of writes) data.set(write.path, write.value);
+      return result;
+    }
+  };
+  const auth: any = { getUser: jest.fn(async (uid: string) => ({ uid, disabled: false })) };
+  return { store: new VerifiedEntitlementStore(db, auth), data };
+}
+
+test('a slow older paid verification cannot reopen access after newer revocation', async () => {
+  const { store, data } = orderedStoreFixture();
+  let releaseOld!: (result: StoreVerifiedEntitlement) => void;
+  const oldVerification = new Promise<StoreVerifiedEntitlement>(resolve => { releaseOld = resolve; });
+  const oldPaid: StoreVerifiedEntitlement = {
+    isPro: true, status: 'active', tier: 'PRO_MONTHLY', expiresAtMs: 1_900_000_000_000,
+    requestDateMs: 1_800_000_000_000
+  };
+  const newerRevocation: StoreVerifiedEntitlement = {
+    isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null,
+    requestDateMs: 1_800_000_000_001
+  };
+  const cache = (uid: string, result: StoreVerifiedEntitlement) => store.cache(uid, result);
+  const slow = new StoreAccessResolver(() => oldVerification, cache, async () => null)
+    .current('user_123', false);
+  const fast = new StoreAccessResolver(async () => newerRevocation, cache, async () => null);
+  await expect(fast.current('user_123', false)).resolves.toMatchObject({ isPro: false });
+  releaseOld(oldPaid);
+  await expect(slow).rejects.toBeInstanceOf(StaleStoreVerificationError);
+  expect(data.get('users/user_123/entitlements/pro')).toMatchObject({
+    isPro: false, vendorRequestDateMs: newerRevocation.requestDateMs
+  });
+});
+
+test('same-millisecond conflict resolves toward revoked access', async () => {
+  const { store, data } = orderedStoreFixture();
+  const paid: StoreVerifiedEntitlement = {
+    isPro: true, status: 'active', tier: 'PRO_ANNUAL', expiresAtMs: 1_900_000_000_000,
+    requestDateMs: 1_800_000_000_000
+  };
+  const revoked: StoreVerifiedEntitlement = {
+    isPro: false, status: 'expired', tier: 'FREE', expiresAtMs: null,
+    requestDateMs: paid.requestDateMs
+  };
+  expect(await store.cache('user_123', paid)).toBe(true);
+  expect(await store.cache('user_123', revoked)).toBe(true);
+  await expect(store.cache('user_123', paid)).rejects.toBeInstanceOf(StaleStoreVerificationError);
+  expect(data.get('users/user_123/entitlements/pro')).toMatchObject({ isPro: false });
 });
 
 const NOW_MS = 1_800_000_000_000;

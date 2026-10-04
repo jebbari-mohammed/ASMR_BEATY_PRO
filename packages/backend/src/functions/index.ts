@@ -11,6 +11,7 @@ import { TrialStorePreference } from '../services/trial-store-preference.js';
 import { StoreAccessResolver } from '../services/store-access-resolver.js';
 import { SubscriptionVerificationLimiter } from '../services/subscription-verification-limiter.js';
 import { SkinFeelCheckinWriter } from '../services/skin-feel-checkin-writer.js';
+import { InvalidRevenueCatWebhookError, RevenueCatWebhookReconciler } from '../services/revenuecat-webhook-reconciler.js';
 import { requireRecentAuthentication } from './recent-auth.js';
 
 if (admin.apps.length === 0) {
@@ -36,6 +37,11 @@ const storeAccessResolver = new StoreAccessResolver(
   (userId, verified) => entitlementStore.cache(userId, verified),
   userId => entitlementStore.recentPaidAccess(userId)
 );
+const webhookReconciler = new RevenueCatWebhookReconciler(
+  admin.auth(),
+  userId => new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(userId),
+  (userId, verified, eventType) => entitlementStore.cache(userId, verified, eventType)
+);
 
 /**
  * 1. RevenueCat Server-to-Server Webhook Handler
@@ -43,7 +49,9 @@ const storeAccessResolver = new StoreAccessResolver(
  * Client state is NEVER trusted for subscription gating.
  */
 export const onRevenueCatWebhook = onRequest(
-  { secrets: ['REVENUECAT_WEBHOOK_TOKEN', 'REVENUECAT_SECRET_API_KEY'] },
+  // RevenueCat disconnects after 60 seconds. At most 32 identities are
+  // handled in four batches of eight, each vendor request capped at 8 seconds.
+  { secrets: ['REVENUECAT_WEBHOOK_TOKEN', 'REVENUECAT_SECRET_API_KEY'], timeoutSeconds: 55 },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).send('Method not allowed.');
@@ -73,17 +81,16 @@ export const onRevenueCatWebhook = onRequest(
       return;
     }
 
-    const userId = event.app_user_id;
-    if (typeof userId !== 'string' || !userId || userId.includes('/') || userId.length > 128) {
-      res.status(400).send('Invalid app user ID.');
-      return;
-    }
     try {
       // The event may be delayed or arrive out of order. Always reconcile with
-      // RevenueCat's current subscription state rather than trusting its type.
-      const verified = await new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(userId);
-      await entitlementStore.cache(userId, verified, eventType);
+      // RevenueCat's current state for every affected account, including both
+      // sides of a transfer and Firebase UIDs present only in aliases.
+      await webhookReconciler.reconcile(event);
     } catch (error) {
+      if (error instanceof InvalidRevenueCatWebhookError) {
+        res.status(400).send(error.message);
+        return;
+      }
       console.error('[Billing] Webhook reconciliation failed:', error);
       res.status(503).send('Subscription verification unavailable.');
       return;
