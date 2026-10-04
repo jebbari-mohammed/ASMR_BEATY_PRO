@@ -202,7 +202,7 @@ export default function PaywallScreen() {
           {canStartAppTrial && <View style={styles.freeAccessCard}>
             <Text style={styles.freeAccessEyebrow}>TEN DAYS TO MAKE IT YOURS</Text>
             <Text style={styles.freeAccessTitle}>Try the full ritual, free.</Text>
-            <Text style={styles.freeAccessCopy}>Start when you are ready. No payment method is needed, and nothing is charged automatically. After ten days, choose a store subscription to keep using your routine.</Text>
+            <Text style={styles.freeAccessCopy}>Start when you are ready. No payment method is needed, and nothing is charged automatically. A store subscription is required after ten days; you can also subscribe sooner if you prefer.</Text>
           </View>}
           {activeAppTrial && <View style={styles.freeAccessCard}>
             <Text style={styles.freeAccessEyebrow}>YOUR FREE ACCESS IS OPEN</Text>
@@ -215,17 +215,25 @@ export default function PaywallScreen() {
             <Text style={styles.freeAccessTitle}>Keep your ritual close.</Text>
             <Text style={styles.freeAccessCopy}>Your plan and record are saved. Choose a membership to continue.</Text>
           </View>}
-          <Text style={styles.sectionLabel}>{canStartAppTrial ? 'MEMBERSHIP AFTER FREE ACCESS' : 'CHOOSE YOUR MEMBERSHIP'}</Text>
+          <Text style={styles.sectionLabel}>{canStartAppTrial ? 'MEMBERSHIP NOW OR AFTER FREE ACCESS' : 'CHOOSE YOUR MEMBERSHIP'}</Text>
           {storeLoading ? <ActivityIndicator style={{ margin: 25 }} color={colors.primary} /> : packages.map((pkg) => (
-            <Pressable key={pkg.identifier} disabled={canStartAppTrial} accessibilityRole={canStartAppTrial ? 'text' : 'radio'} accessibilityState={canStartAppTrial ? undefined : { selected: selected === pkg.identifier }} accessibilityLabel={`${planTitle(pkg)}, ${freeTrials[pkg.identifier] ? `${trialPeriodLabel(freeTrials[pkg.identifier])} free, then ` : ''}${pkg.product.priceString} per ${periodLabel(pkg)}${pkg.packageType === 'ANNUAL' && savings !== null ? `, save ${savings} percent compared with monthly` : ''}`} onPress={() => setSelected(pkg.identifier)} style={[styles.plan, !canStartAppTrial && selected === pkg.identifier && styles.planSelected]}>
-              {!canStartAppTrial && <View style={[styles.radio, selected === pkg.identifier && styles.radioSelected]}>{selected === pkg.identifier && <View style={styles.radioCenter} />}</View>}
+            <Pressable key={pkg.identifier} accessibilityRole="radio" accessibilityState={{ selected: selected === pkg.identifier }} accessibilityLabel={`${planTitle(pkg)}, ${freeTrials[pkg.identifier] ? `${trialPeriodLabel(freeTrials[pkg.identifier])} free, then ` : ''}${pkg.product.priceString} per ${periodLabel(pkg)}${pkg.packageType === 'ANNUAL' && savings !== null ? `, save ${savings} percent compared with monthly` : ''}`} onPress={() => setSelected(pkg.identifier)} style={[styles.plan, selected === pkg.identifier && styles.planSelected]}>
+              <View style={[styles.radio, selected === pkg.identifier && styles.radioSelected]}>{selected === pkg.identifier && <View style={styles.radioCenter} />}</View>
               <View style={{ flex: 1 }}><View style={styles.planHeading}><Text style={styles.planTitle}>{planTitle(pkg)}</Text>{pkg.packageType === 'ANNUAL' && savings !== null && <Text style={styles.savings}>SAVE {savings}% VS MONTHLY</Text>}</View><Text style={styles.planCaption}>{freeTrials[pkg.identifier] ? `Free for ${trialPeriodLabel(freeTrials[pkg.identifier])}, then ${pkg.product.priceString} per ${periodLabel(pkg)}` : `Billed ${pkg.product.priceString} per ${periodLabel(pkg)}`}</Text></View>
               <Text style={styles.price}>{pkg.product.priceString}</Text>
             </Pressable>
           ))}
-          {(error || accessError || (!canStartAppTrial && storeError)) && <Text accessibilityRole="alert" style={styles.error}>{error || accessError || storeError}</Text>}
+          {(error || accessError || storeError) && <Text accessibilityRole="alert" style={styles.error}>{error || accessError || storeError}</Text>}
           {switchAccountError && <Text accessibilityRole="alert" style={styles.error}>{switchAccountError}</Text>}
           {(error || storeError) && <Pressable onPress={load} style={styles.retry}><Text style={styles.retryText}>Reload access and plans</Text></Pressable>}
+          {canStartAppTrial && plan && <View style={styles.joinNow}>
+            <Text style={styles.joinNowTitle}>Ready to join now?</Text>
+            <Text style={styles.joinNowCopy}>Your ten free app days need no payment. If you prefer a store subscription now, the selected plan is available below.</Text>
+            <Pressable disabled={busy || storeLoading || loading} onPress={purchase} accessibilityRole="button" style={styles.joinNowAction}>
+              <Text style={styles.joinNowActionText}>{selectedTrial ? 'View store trial and subscribe' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}`}</Text>
+            </Pressable>
+            <Text style={styles.joinNowTerms}>{selectedTrial ? `Store offer: free for ${selectedTrial}, then ${plan.product.priceString} per ${periodLabel(plan)}. Cancel before the store trial ends to avoid a charge. ` : `${plan.product.priceString} per ${periodLabel(plan)}. `}The subscription renews automatically until cancelled in store settings. The store confirms the offer before purchase.</Text>
+          </View>}
           <Text style={styles.sectionLabel}>WHAT OPENS WHEN YOU JOIN</Text>
           {([
             ['sunny-outline', 'A guide for every step', 'Open your morning or evening ritual and mark each step done.'],
@@ -293,5 +301,11 @@ const styles = StyleSheet.create({
   freeAccessTitle: { color: colors.primary, fontSize: 24, lineHeight: 29, fontWeight: '700', marginTop: 7 },
   freeAccessCopy: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 7 },
   continueRitual: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginTop: 10 },
-  continueRitualText: { color: colors.primary, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' }
+  continueRitualText: { color: colors.primary, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
+  joinNow: { borderTopWidth: 1, borderColor: colors.border, paddingTop: 16, marginTop: 10, marginBottom: 24 },
+  joinNowTitle: { color: colors.primary, fontSize: 18, fontWeight: '700' },
+  joinNowCopy: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 5 },
+  joinNowAction: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 12, paddingHorizontal: 12 },
+  joinNowActionText: { color: colors.primary, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  joinNowTerms: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 9 }
 });

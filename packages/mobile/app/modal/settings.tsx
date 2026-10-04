@@ -38,7 +38,8 @@ const ACCOUNT_DELETION_TIMEOUT_MS = 330_000;
 export default function SettingsModal() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { state, email, refresh, signOut } = useAccess();
+  const { state, email, trialEndsAtMs, refresh, signOut } = useAccess();
+  const isFreeAccess = state === 'subscribed' && trialEndsAtMs !== null;
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -129,7 +130,7 @@ export default function SettingsModal() {
   };
 
   const handleManageMembership = async () => {
-    if (state !== 'subscribed') {
+    if (state !== 'subscribed' || isFreeAccess) {
       router.push('/modal/paywall');
       return;
     }
@@ -300,14 +301,14 @@ export default function SettingsModal() {
               <Ionicons name="sparkles" size={18} color={colors.goldDark} />
             </View>
             <View style={styles.membershipInfo}>
-              <Text style={styles.membershipTier}>{state === 'subscribed' ? 'Active membership' : 'Membership required'}</Text>
+              <Text style={styles.membershipTier}>{isFreeAccess ? '10-day free access' : state === 'subscribed' ? 'Active membership' : 'Membership required'}</Text>
               <Text style={styles.membershipSub}>{email ?? 'Sign in to manage access'}</Text>
             </View>
             <TouchableOpacity
               style={styles.manageBtn}
               onPress={handleManageMembership}
             >
-              <Text style={styles.manageBtnText}>{state === 'subscribed' ? 'Manage' : 'Join'}</Text>
+              <Text style={styles.manageBtnText}>{isFreeAccess ? 'See plans' : state === 'subscribed' ? 'Manage' : 'Join'}</Text>
             </TouchableOpacity>
           </View>
 
