@@ -222,6 +222,11 @@ button, summary { font: inherit; }
 .guide-section .guide-source-link { margin-top: 22px; font-size: .84rem; }
 .guide-pullquote { margin: 0; padding: 55px 0 60px; border-bottom: 1px solid var(--line); }
 .guide-pullquote p { max-width: 690px; margin: 0; color: #435746; font: italic 400 clamp(2.5rem, 4.4vw, 5rem)/1.1 var(--serif); letter-spacing: -.045em; }
+.guide-shelf-aside { display: grid; grid-template-columns: minmax(100px, .28fr) 1fr; gap: 22px; align-items: center; margin: 40px 0; padding: 34px 0; border-block: 1px solid var(--line); }
+.guide-shelf-aside-mark { color: #a6865d; font: 300 clamp(5rem, 9vw, 9rem)/.8 var(--serif); }
+.guide-shelf-aside .section-index { margin-bottom: 17px; }
+.guide-shelf-aside .guide-shelf-aside-line { margin: 0; max-width: none; color: var(--forest); font: 400 clamp(2.4rem, 4vw, 4.4rem)/1.05 var(--serif); letter-spacing: -.045em; }
+.guide-shelf-aside-line em { font-weight: 300; }
 .guide-app-note { background: #e7eee8; border: 0; padding: clamp(36px, 5vw, 70px); }
 .guide-app-note h2 { max-width: 670px; }
 .guide-app-note .under-link { font-size: .89rem; }
@@ -336,6 +341,9 @@ button, summary { font: inherit; }
   .guide-answer h2 { font-size: 3.05rem; }
   .guide-section h2 { font-size: 3.1rem; }
   .guide-steps li { grid-template-columns: 34px minmax(0, 1fr); gap: 10px; }
+  .guide-shelf-aside { grid-template-columns: 58px 1fr; gap: 12px; }
+  .guide-shelf-aside-mark { font-size: 5rem; }
+  .guide-shelf-aside .guide-shelf-aside-line { font-size: 2.4rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
