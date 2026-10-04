@@ -1,4 +1,4 @@
-# Affiliate Commerce Architecture & Trust Model
+# Historical affiliate commerce proposal
 
 > **Historical proposal.** The affiliate offer resolver, sample prices, and
 > generated tracking links described below are not active. Current optional

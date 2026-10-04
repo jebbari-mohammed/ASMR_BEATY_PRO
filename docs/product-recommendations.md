@@ -1,4 +1,4 @@
-# Product Recommendations & Affiliate Engine (Production V1)
+# Historical product recommendation proposal
 
 > **Historical proposal.** This recommendation engine, ingredient scoring,
 > generated affiliate links, and sample catalog are not active. Current
