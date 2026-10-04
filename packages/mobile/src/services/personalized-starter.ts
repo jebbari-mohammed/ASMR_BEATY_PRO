@@ -36,7 +36,7 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
   const combination = state.skinFeelByEndOfDay === 'combination_dry_and_oily';
   // An occasional reaction is enough to favor the gentler starter wording.
   // These answers cannot rule out allergies or an underlying skin condition.
-  const sensitive = state.sensitivityLevel === 'sometimes' || state.sensitivityLevel === 'often' || state.sensitivityLevel === 'very_easily';
+  const sensitive = state.sensitivityLevel === 'occasionally' || state.sensitivityLevel === 'sometimes' || state.sensitivityLevel === 'often' || state.sensitivityLevel === 'very_easily';
   const short = state.timeCommitment === 'about_2_minutes' || state.desiredComplexity === 'minimal';
   const hydrationGoal = goals.has('more_hydration_less_dryness');
   const shineGoal = goals.has('less_shine_oiliness');
@@ -111,7 +111,7 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
     ? 'Two morning steps and two evening steps make this easy to return to. You can edit every step after joining.'
     : 'A gentle foundation for morning and evening. You can edit every step after joining.';
   const caution = sensitive
-    ? 'You said your skin sometimes reacts. Use products you already tolerate; stop anything that stings or burns. Ask a dermatologist about persistent or severe symptoms.'
+    ? 'You said your skin can react. Use products you already tolerate; skip a step if you do not have a product that feels safe. Stop anything that stings or burns. Ask a dermatologist about persistent or severe symptoms.'
     : 'Use products you already tolerate and skip any step that needs a product you do not own. Stop anything that irritates you; ask a dermatologist about persistent or severe symptoms.';
 
   const whyItFits = [

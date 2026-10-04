@@ -13,7 +13,7 @@ test('a short, dry and reactive-skin plan stays gentle and fits four steps', () 
   expect(plan.steps).toHaveLength(4);
   expect(plan.steps.filter(step => step.period === 'morning').map(step => step.category)).toEqual(['Hydrate', 'Protect']);
   expect(plan.steps.find(step => step.id === 'm2')?.detail).toContain('comfortable');
-  expect(plan.caution).toContain('sometimes reacts');
+  expect(plan.caution).toContain('skin can react');
   expect(plan.steps.every(step => step.category !== 'Treat')).toBe(true);
   expect(plan.whyItFits).toEqual(expect.arrayContaining([expect.stringContaining('Sun protection'), expect.stringContaining('Starting from zero')]));
   expect(plan.habitPrompt).toContain('calendar');
@@ -104,6 +104,20 @@ test('an occasional reaction gets the gentler plan and limits are clear', () => 
   expect(plan.steps.find(step => step.id === 'm2')?.detail).toContain('fragrance-free');
   expect(plan.caution).toContain('dermatologist');
   expect(plan.steps.every(step => step.category !== 'Treat')).toBe(true);
+});
+
+test('the Occasionally answer also uses the gentle path and permits skipping an unsafe product', () => {
+  const plan = buildStarterPlan({
+    selectedGoals: ['less_shine_oiliness'],
+    skinFeelByEndOfDay: 'oily_or_shiny',
+    sensitivityLevel: 'occasionally',
+    timeCommitment: 'about_5_minutes',
+    existingRoutineTier: 'nothing_yet'
+  });
+  expect(plan.steps.find(step => step.id === 'm1')?.name).toBe('Refresh gently');
+  expect(plan.steps.find(step => step.id === 'm2')?.detail).toContain('fragrance-free');
+  expect(plan.caution).toContain('skip a step');
+  expect(plan.caution).toContain('dermatologist');
 });
 
 test('the four-question matrix always yields a bounded, editable starter routine', () => {
