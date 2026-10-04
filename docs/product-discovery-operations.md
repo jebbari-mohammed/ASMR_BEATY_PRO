@@ -81,6 +81,14 @@ application was also declined. Do not create or publish Ulta tracking links
 unless Ulta later approves a contract and explicitly permits product deep
 links. The clean, noncommissioned product links remain available in the meantime.
 
+On October 4, Impact support ticket **891276** was opened from the owner
+account. It asks whether the immediate Ulta decline came from Impact or Ulta,
+the specific reason, and the reconsideration route. A follow-up asks whether
+Ulta's [UB Creates program](https://www.ulta.com/company/affiliate) is the
+right route for this account's social creator and app mix. Live chat agents
+were offline, and the ticket was still open when checked. Do not submit more
+Ulta applications before support answers.
+
 An alternative under review is [iHerb's affiliate program](https://www.iherb.com/info/affiliates).
 Its published [terms](https://www.iherb.com/lp/affiliate-terms-and-conditions)
 say Impact supports app-to-app tracking and that affiliates may deep link to
