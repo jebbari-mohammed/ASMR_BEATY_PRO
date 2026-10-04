@@ -6,7 +6,7 @@
 2. Review the [release checklist](release-checklist.md), the exact Git diff, the App Store privacy form, and Google Play Data safety form. Do not promote the app while any release gate is open.
 3. Ensure `REVENUECAT_SECRET_API_KEY` and `REVENUECAT_WEBHOOK_TOKEN` have current versions in Firebase Secret Manager. Set the RevenueCat webhook URL to the deployed `onRevenueCatWebhook` endpoint and test a signed test event. Never print or commit secret values.
 4. Functions, Firestore rules, Storage rules, and Hosting are deployed to `asmr-skin-coach`. Recheck live `/privacy`, `/terms`, `/support`, and `/delete-account`; verify email and paid access on signed devices before rollout.
-5. Use the matching Android upload key for the version code 10 App Bundle. Keep the original keystore backed up securely. iOS build `1.0.1 (9)` is In Testing for Team `6SUDVC57MM` in the one-person owner-only TestFlight group; Android `1.0.1 (10)` is on the one-person Play internal list. Confirm the membership screen, store purchases, App Check, and deletion on physical hardware before public release.
+5. Sign Android bundles only with the registered Play upload key kept in the owner Keychain. Verify the signer fingerprint and version code before uploading to the existing one-person internal track. Use the local Apple distribution credentials for TestFlight and assign only the existing one-person Owner device QA group. The [release checklist](release-checklist.md) records current build numbers and private-test status. Confirm the membership screen, store purchases, App Check, and deletion on physical hardware before public release.
 6. Submit the first Apple subscription group with the app version. Use a verified, unprivileged reviewer account supplied through the stores' review fields.
 
 ## Beta and launch checks
@@ -15,6 +15,7 @@
 - Check purchase cancellation, expiry, refund, grace period, reinstall, offline return, and account switch. Confirm Firestore denies a user immediately after verified expiration.
 - Check VoiceOver, TalkBack, larger text, contrast, and smaller screens. Inspect store screenshots for actual build behavior and the no-people image rule.
 - Monitor Firebase Function errors, billing verification failures, Firestore denials, sign-in/verification failures, crash-free sessions, and support inbox during closed tests and staged rollout. Do not log passwords, subscription tokens, or user routine contents.
+- Keep optional product links direct and noncommissioned until Impact program access, generated URLs, final-product redirect audits, exact tracking-host approval, and nearby disclosure have been verified through the [product discovery procedure](product-discovery-operations.md). Never put Impact API credentials or customer identifiers in a catalog or mobile build.
 
 ## Local Android signing backup
 
