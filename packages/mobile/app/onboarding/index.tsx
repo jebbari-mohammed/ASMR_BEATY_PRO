@@ -168,15 +168,16 @@ export default function OnboardingScreen() {
               <View style={styles.previewInviteCopy}><Text style={styles.previewInviteTitle}>Try your first morning</Text><Text style={styles.previewInviteDetail}>A short preview of how your daily guide works</Text></View>
               <Ionicons name="arrow-forward" size={20} color={colors.primary} />
             </Pressable>
+            <View style={styles.journeyHead}><Text style={styles.journeyEyebrow}>YOUR STARTING ROUTINE</Text><Text style={styles.journeyTitle}>The steps you’ll follow.</Text></View>
+            {(['morning', 'evening'] as const).map(period => <View key={period} style={styles.ritualCard}>
+              <View style={styles.ritualHead}><Ionicons name={period === 'morning' ? 'sunny-outline' : 'moon-outline'} size={21} color={colors.goldDark} /><Text style={styles.ritualTitle}>{period === 'morning' ? 'Morning ritual' : 'Evening ritual'}</Text></View>
+              {plan.steps.filter(item => item.period === period).map((item, i) => <View key={item.id} style={styles.ritualStep}><Text style={styles.stepNumber}>{String(i + 1).padStart(2, '0')}</Text><View style={styles.stepText}><Text style={styles.stepName}>{item.name}</Text><Text style={styles.stepDetail}>{item.detail}</Text></View></View>)}
+            </View>)}
+            <View style={styles.fitCard}><Text style={styles.fitTitle}>WHY THIS FITS YOUR ANSWERS</Text>{plan.whyItFits.map(line => <View key={line} style={styles.fitRow}><Ionicons name="checkmark-circle-outline" size={17} color={colors.goldDark} /><Text style={styles.fitText}>{line}</Text></View>)}</View>
             <View style={styles.journeyHead}><Text style={styles.journeyEyebrow}>THE NEXT SEVEN DAYS</Text><Text style={styles.journeyTitle}>A start you can picture.</Text></View>
             {plan.firstWeek.map((moment, i) => <View key={moment.day} style={styles.journeyRow}>
               <View style={styles.journeyRail}><View style={[styles.journeyDot, i === 0 && styles.journeyDotActive]} />{i < plan.firstWeek.length - 1 && <View style={styles.journeyLine} />}</View>
               <View style={styles.journeyCopy}><Text style={styles.journeyDay}>{moment.day}</Text><Text style={styles.journeyMoment}>{moment.title}</Text><Text style={styles.journeyDetail}>{moment.detail}</Text></View>
-            </View>)}
-            <View style={styles.fitCard}><Text style={styles.fitTitle}>WHY THIS FITS YOUR ANSWERS</Text>{plan.whyItFits.map(line => <View key={line} style={styles.fitRow}><Ionicons name="checkmark-circle-outline" size={17} color={colors.goldDark} /><Text style={styles.fitText}>{line}</Text></View>)}</View>
-            {(['morning', 'evening'] as const).map(period => <View key={period} style={styles.ritualCard}>
-              <View style={styles.ritualHead}><Ionicons name={period === 'morning' ? 'sunny-outline' : 'moon-outline'} size={21} color={colors.goldDark} /><Text style={styles.ritualTitle}>{period === 'morning' ? 'Morning ritual' : 'Evening ritual'}</Text></View>
-              {plan.steps.filter(item => item.period === period).map((item, i) => <View key={item.id} style={styles.ritualStep}><Text style={styles.stepNumber}>{String(i + 1).padStart(2, '0')}</Text><View style={styles.stepText}><Text style={styles.stepName}>{item.name}</Text><Text style={styles.stepDetail}>{item.detail}</Text></View></View>)}
             </View>)}
             <View style={styles.caution}><Ionicons name="heart-outline" size={20} color={colors.primary} /><Text style={styles.cautionText}>{plan.caution}</Text></View>
             <Text style={styles.planFoot}>This plan uses only your answers. It is cosmetic self-care guidance, not a diagnosis or a promise of skin results.</Text>

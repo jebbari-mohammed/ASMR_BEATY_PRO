@@ -25,6 +25,7 @@ const localDayKey = () => {
 type DisplayStep = RoutineStep & { completed: boolean };
 type PendingStep = { day: string; completed: boolean; operation: number; settled: boolean };
 type DataIdentity = { uid: string; day: string };
+type InFlightCheckin = DataIdentity & { operation: number };
 
 const FEEL_CHOICES: { value: SkinFeel; label: string }[] = [
   { value: 'comfortable', label: 'Comfortable' },
@@ -74,6 +75,7 @@ export default function TodayScreen() {
   const latestIntent = useRef(new Map<string, boolean>());
   const operationId = useRef(0);
   const checkinOperationId = useRef(0);
+  const checkinInFlight = useRef<InFlightCheckin | null>(null);
   const snapshotHasPendingWrites = useRef(false);
   const mounted = useRef(true);
 
@@ -104,6 +106,7 @@ export default function TodayScreen() {
       setCheckinPendingWrites(false);
       setCheckinError(null);
       ++checkinOperationId.current;
+      checkinInFlight.current = null;
       setLoading(true);
       setRefreshing(false);
       setLoadError(null);
@@ -217,9 +220,9 @@ export default function TodayScreen() {
     setCheckinError(null);
     setCheckinIdentity(null);
     setSkinFeel(null);
-    setCheckinSaving(false);
+    if (checkinInFlight.current?.uid !== uid || checkinInFlight.current?.day !== day) checkinInFlight.current = null;
+    setCheckinSaving(checkinInFlight.current !== null);
     setCheckinPendingWrites(false);
-    ++checkinOperationId.current;
     try {
       unsubscribe = SkinFeelCheckinService.watchToday(day, uid, ({ checkin, pendingWrites }) => {
         if (!stillCurrent()) return;
@@ -232,6 +235,7 @@ export default function TodayScreen() {
         setSkinFeel(null);
         setCheckinIdentity(null);
         setCheckinPendingWrites(false);
+        checkinInFlight.current = null;
         setCheckinSaving(false);
         ++checkinOperationId.current;
         setCheckinError('Your check-in could not load. Check your connection and try again.');
@@ -239,6 +243,8 @@ export default function TodayScreen() {
       });
     } catch {
       if (stillCurrent()) {
+        checkinInFlight.current = null;
+        setCheckinSaving(false);
         setCheckinError('Your check-in could not load. Check your connection and try again.');
         setCheckinLoading(false);
       }
@@ -338,23 +344,27 @@ export default function TodayScreen() {
     const day = localDayKey();
     const uid = auth().currentUser?.uid;
     if (!uid || checkinIdentity?.uid !== uid || checkinIdentity.day !== day || checkinLoading) return;
+    if (checkinInFlight.current?.uid === uid && checkinInFlight.current.day === day) return;
     const epoch = identityEpoch.current;
     const operation = ++checkinOperationId.current;
+    checkinInFlight.current = { uid, day, operation };
     setCheckinSaving(true);
     setCheckinError(null);
     const write = feel === null
       ? SkinFeelCheckinService.removeToday(day, uid)
       : SkinFeelCheckinService.setToday(day, uid, feel);
     void write.then(() => {
-      if (mounted.current && identityEpoch.current === epoch && auth().currentUser?.uid === uid && checkinOperationId.current === operation) {
+      if (mounted.current && identityEpoch.current === epoch && auth().currentUser?.uid === uid && localDayKey() === day && checkinInFlight.current?.operation === operation) {
         setSkinFeel(feel);
-        setCheckinSaving(false);
       }
     }).catch(() => {
-      if (mounted.current && identityEpoch.current === epoch && auth().currentUser?.uid === uid && checkinOperationId.current === operation) {
-        setCheckinSaving(false);
+      if (mounted.current && identityEpoch.current === epoch && auth().currentUser?.uid === uid && localDayKey() === day && checkinInFlight.current?.operation === operation) {
         setCheckinError('Your check-in could not sync. Check your connection or membership and try again.');
       }
+    }).finally(() => {
+      if (checkinInFlight.current?.operation !== operation) return;
+      checkinInFlight.current = null;
+      if (mounted.current && identityEpoch.current === epoch && auth().currentUser?.uid === uid && localDayKey() === day) setCheckinSaving(false);
     });
   }
 
@@ -363,6 +373,14 @@ export default function TodayScreen() {
   const completedCount = steps.filter(step => step.completed).length;
   const totalCount = steps.length;
   const progressPercent = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
+  const morningRemaining = morningSteps.filter(step => !step.completed).length;
+  const eveningRemaining = eveningSteps.filter(step => !step.completed).length;
+  const nextPeriod = morningRemaining && eveningRemaining
+    ? new Date().getHours() >= 16 ? 'evening' : 'morning'
+    : morningRemaining ? 'morning' : eveningRemaining ? 'evening' : null;
+  const nextSteps = nextPeriod === 'morning' ? morningSteps : eveningSteps;
+  const nextRemaining = nextPeriod === 'morning' ? morningRemaining : eveningRemaining;
+  const nextStarted = nextSteps.some(step => step.completed);
   const playerSteps = steps.filter(step => step.period === playerPeriod);
   const playerStep = playerSteps[playerIndex];
   const liveUid = auth().currentUser?.uid ?? null;
@@ -400,9 +418,7 @@ export default function TodayScreen() {
                 <Text style={styles.editorialPillText}>YOUR DAILY RITUAL</Text>
               </View>
               <Text style={styles.editorialTitle}>Care for your skin, one step at a time</Text>
-              <Text style={styles.editorialSubtitle}>
-                Your own routine, one step at a time.
-              </Text>
+              <Text style={styles.editorialSubtitle}>Your morning and evening steps, at your own pace.</Text>
             </LinearGradient>
           </ImageBackground>
         </View>
@@ -416,20 +432,32 @@ export default function TodayScreen() {
           <Pressable accessibilityRole="button" accessibilityLabel="View membership options" onPress={() => router.push('/modal/paywall')} style={styles.trialAction}><Text style={styles.trialActionText}>View membership</Text><Ionicons name="arrow-forward" size={14} color={colors.primary} /></Pressable>
         </View>}
 
-        {dataIsCurrent && starterPlan && <View style={styles.startingPath}>
-          <Text style={styles.startingEyebrow}>MADE FROM YOUR ANSWERS</Text>
-          <Text style={styles.startingTitle}>{starterPlan.ritualName}</Text>
-          <Text style={styles.startingIntro}>Your first-week path</Text>
-          {starterPlan.firstWeek.map((moment, index) => <View key={moment.day} style={[styles.startingMoment, index > 0 && styles.startingMomentBorder]}>
-            <View style={styles.startingDay}><Text style={styles.startingDayText}>{moment.day}</Text></View>
-            <View style={styles.startingMomentCopy}><Text style={styles.startingMomentTitle}>{moment.title}</Text><Text style={styles.startingMomentDetail}>{moment.detail}</Text></View>
-          </View>)}
-        </View>}
-
         {showLoading ? <ActivityIndicator style={{ marginTop: 34 }} color={colors.primary} /> : loadError ? <Card variant="elevated" style={styles.streakCard}><Text style={styles.sectionTitle}>Could not load your routine</Text><Text style={styles.stepDetail}>{__DEV__ ? loadError : 'Check your connection and try again.'}</Text><Pressable accessibilityRole="button" onPress={() => setReloadRevision(revision => revision + 1)} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable></Card> : <>
         {refreshing && <View style={styles.refreshNotice} accessibilityRole="progressbar" accessibilityLabel="Updating your ritual"><ActivityIndicator size="small" color={colors.primary} /><Text style={styles.refreshText}>Updating your ritual</Text></View>}
         {showSyncNotice && <Text accessibilityLiveRegion="polite" style={styles.syncNotice}>Changes on this device are waiting to sync.</Text>}
         {syncError && <Text accessibilityRole="alert" style={styles.syncError}>{syncError}</Text>}
+        {totalCount === 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Add your first ritual step" onPress={() => router.push('/(tabs)/routine')} style={styles.dailyComplete}>
+          <Ionicons name="add-circle-outline" size={28} color={colors.primary} />
+          <View style={styles.dailyActionCopy}><Text style={styles.dailyCompleteTitle}>Start with one small step.</Text><Text style={styles.dailyCompleteDetail}>Add a morning or evening step to begin your ritual.</Text></View>
+          <Ionicons name="arrow-forward" size={20} color={colors.primary} />
+        </Pressable> : nextPeriod ? <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${nextStarted ? 'Continue' : 'Begin'} ${nextPeriod} ritual, ${nextRemaining} ${nextRemaining === 1 ? 'step' : 'steps'} left`}
+          accessibilityState={{ disabled: refreshing }}
+          disabled={refreshing}
+          onPress={() => openPlayer(nextPeriod)}
+          style={[styles.dailyAction, refreshing && styles.dailyActionDisabled]}
+        >
+          <View style={styles.dailyActionCopy}>
+            <Text style={styles.dailyActionEyebrow}>YOUR NEXT MOMENT</Text>
+            <Text style={styles.dailyActionTitle}>{nextStarted ? 'Continue' : 'Begin'} your {nextPeriod} ritual</Text>
+            <Text style={styles.dailyActionDetail}>{nextRemaining} {nextRemaining === 1 ? 'step' : 'steps'} to go · guided at your pace</Text>
+          </View>
+          <View style={styles.dailyActionArrow}><Ionicons name="arrow-forward" size={20} color={colors.primary} /></View>
+        </Pressable> : <View style={styles.dailyComplete} accessible accessibilityLabel="Your ritual is complete for today">
+          <Ionicons name="checkmark-circle" size={28} color={colors.primary} />
+          <View style={styles.dailyActionCopy}><Text style={styles.dailyCompleteTitle}>Your ritual is complete today.</Text><Text style={styles.dailyCompleteDetail}>Every step you marked is saved in your record.</Text></View>
+        </View>}
         {/* Daily completion card */}
         <Card variant="elevated" style={styles.streakCard}>
           <LinearGradient
@@ -464,38 +492,6 @@ export default function TodayScreen() {
             </View>
           </LinearGradient>
         </Card>
-
-        <View style={styles.checkinCard}>
-          <View style={styles.checkinHeading}>
-            <View style={styles.checkinIcon}><Ionicons name="flower-outline" size={19} color={colors.primary} /></View>
-            <View style={styles.checkinHeadingCopy}>
-              <Text style={styles.checkinEyebrow}>A MOMENT TO NOTICE</Text>
-              <Text style={styles.checkinTitle}>How does your skin feel today?</Text>
-            </View>
-          </View>
-          <Text style={styles.checkinIntro}>Optional. Choose what fits best; you can change or remove it today.</Text>
-          {checkinLoading
-            ? <ActivityIndicator style={styles.checkinLoader} color={colors.primary} size="small" />
-            : checkinIdentity?.uid === liveUid && checkinIdentity?.day === liveDay ? <>
-              <View style={styles.checkinChoices}>
-                {FEEL_CHOICES.map(choice => <Pressable
-                  key={choice.value}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: skinFeel === choice.value }}
-                  accessibilityLabel={choice.label}
-                  onPress={() => changeSkinFeel(choice.value)}
-                  style={[styles.checkinChoice, skinFeel === choice.value && styles.checkinChoiceSelected]}
-                ><Text style={[styles.checkinChoiceText, skinFeel === choice.value && styles.checkinChoiceTextSelected]}>{choice.label}</Text></Pressable>)}
-              </View>
-              <View style={styles.checkinFooter}>
-                {skinFeel && <Pressable accessibilityRole="button" onPress={() => changeSkinFeel(null)} style={styles.checkinRemove}><Text style={styles.checkinRemoveText}>Remove today’s check-in</Text></Pressable>}
-                {(checkinSaving || checkinPendingWrites) && <Text accessibilityLiveRegion="polite" style={styles.checkinStatus}>Waiting to sync…</Text>}
-              </View>
-            </> : null}
-          {checkinError && <Text accessibilityRole="alert" style={styles.checkinError}>{checkinError}</Text>}
-          {checkinError && !checkinIdentity && <Pressable accessibilityRole="button" onPress={() => setReloadRevision(revision => revision + 1)} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable>}
-          <Text style={styles.checkinPrivacy}>If you choose, your observation is saved privately to your account.</Text>
-        </View>
 
         {/* Morning Ritual Section */}
         <View style={styles.sectionHeaderRow}>
@@ -591,7 +587,50 @@ export default function TodayScreen() {
           </TouchableOpacity>
         ))}
 
+        <View style={styles.checkinCard}>
+          <View style={styles.checkinHeading}>
+            <View style={styles.checkinIcon}><Ionicons name="flower-outline" size={19} color={colors.primary} /></View>
+            <View style={styles.checkinHeadingCopy}>
+              <Text style={styles.checkinEyebrow}>A MOMENT TO NOTICE</Text>
+              <Text style={styles.checkinTitle}>How does your skin feel today?</Text>
+            </View>
+          </View>
+          <Text style={styles.checkinIntro}>Optional. Choose what fits best; you can change or remove it today.</Text>
+          {checkinLoading
+            ? <ActivityIndicator style={styles.checkinLoader} color={colors.primary} size="small" />
+            : checkinIdentity?.uid === liveUid && checkinIdentity?.day === liveDay ? <>
+              <View style={styles.checkinChoices}>
+                {FEEL_CHOICES.map(choice => <Pressable
+                  key={choice.value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: skinFeel === choice.value, disabled: checkinSaving }}
+                  accessibilityLabel={choice.label}
+                  disabled={checkinSaving}
+                  onPress={() => changeSkinFeel(choice.value)}
+                  style={[styles.checkinChoice, skinFeel === choice.value && styles.checkinChoiceSelected, checkinSaving && styles.checkinChoiceSaving]}
+                ><Text style={[styles.checkinChoiceText, skinFeel === choice.value && styles.checkinChoiceTextSelected]}>{choice.label}</Text></Pressable>)}
+              </View>
+              <View style={styles.checkinFooter}>
+                {skinFeel && <Pressable accessibilityRole="button" accessibilityState={{ disabled: checkinSaving }} disabled={checkinSaving} onPress={() => changeSkinFeel(null)} style={styles.checkinRemove}><Text style={styles.checkinRemoveText}>Remove today’s check-in</Text></Pressable>}
+                {(checkinSaving || checkinPendingWrites) && <Text accessibilityLiveRegion="polite" style={styles.checkinStatus}>{checkinSaving ? 'Saving your check-in…' : 'Waiting to sync…'}</Text>}
+              </View>
+            </> : null}
+          {checkinError && <Text accessibilityRole="alert" style={styles.checkinError}>{checkinError}</Text>}
+          {checkinError && !checkinIdentity && <Pressable accessibilityRole="button" onPress={() => setReloadRevision(revision => revision + 1)} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable>}
+          <Text style={styles.checkinPrivacy}>If you choose, your observation is saved privately to your account.</Text>
+        </View>
+
         </>}
+        {dataIsCurrent && starterPlan && <View style={styles.startingPath}>
+          <Text style={styles.startingEyebrow}>MADE FROM YOUR ANSWERS</Text>
+          <Text style={styles.startingTitle}>{starterPlan.ritualName}</Text>
+          <Text style={styles.startingIntro}>Your first-week path</Text>
+          {starterPlan.firstWeek.map((moment, index) => <View key={moment.day} style={[styles.startingMoment, index > 0 && styles.startingMomentBorder]}>
+            <View style={styles.startingDay}><Text style={styles.startingDayText}>{moment.day}</Text></View>
+            <View style={styles.startingMomentCopy}><Text style={styles.startingMomentTitle}>{moment.title}</Text><Text style={styles.startingMomentDetail}>{moment.detail}</Text></View>
+          </View>)}
+        </View>}
+
         <DisclaimerBar showAffiliate={false} />
       </ScrollView>
       <Modal visible={dataIsCurrent && playerPeriod !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setPlayerPeriod(null)}>
@@ -642,6 +681,16 @@ const styles = StyleSheet.create({
   syncNotice: { color: colors.primary, backgroundColor: colors.primarySoft, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 18 },
   refreshNotice: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   refreshText: { color: colors.textSecondary, fontSize: 12 },
+  dailyAction: { minHeight: 105, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, paddingHorizontal: 19, paddingVertical: 17, backgroundColor: colors.primary, marginBottom: spacing.md },
+  dailyActionDisabled: { opacity: 0.5 },
+  dailyActionCopy: { flex: 1 },
+  dailyActionEyebrow: { color: colors.goldLight, fontSize: 10, fontWeight: '800', letterSpacing: 1.3, marginBottom: 5 },
+  dailyActionTitle: { color: 'white', fontSize: 19, fontWeight: '700', lineHeight: 25 },
+  dailyActionDetail: { color: '#E1ECE3', fontSize: 12, lineHeight: 18, marginTop: 4 },
+  dailyActionArrow: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F4E8D1' },
+  dailyComplete: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, padding: 18, backgroundColor: colors.primarySoft, marginBottom: spacing.md },
+  dailyCompleteTitle: { color: colors.primary, fontSize: 18, fontWeight: '700' },
+  dailyCompleteDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 },
   retryButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingRight: 16 },
   retryText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   syncError: { color: '#A64032', backgroundColor: colors.terracottaLight, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 18 },
@@ -671,6 +720,7 @@ const styles = StyleSheet.create({
   checkinChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   checkinChoice: { minHeight: 44, paddingHorizontal: 13, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 12, justifyContent: 'center' },
   checkinChoiceSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  checkinChoiceSaving: { opacity: 0.55 },
   checkinChoiceText: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
   checkinChoiceTextSelected: { color: colors.primary, fontWeight: '700' },
   checkinFooter: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 5 },
