@@ -13,6 +13,8 @@ The app uses a hard paywall after adult onboarding, Firebase email verification,
 
 Both products are in RevenueCat offering `default` and attached to the existing entitlement `asmr_beaty_pro_pro`. The default offering also contains a Test Store lifetime package. The mobile paywall filters its visible choices to annual and monthly. A purchase is not treated as active because a client says so: the Firebase callable queries RevenueCat's subscriber API for the authenticated Firebase UID, checks this entitlement and expiration, and writes a server-owned entitlement record. Firestore rules require that record and email verification to read or write paid records.
 
+The revised verifier source checks the exact four store product identifiers above, a finite subscription expiration, refund status, and grace period. It can recognize an approved active subscription even when RevenueCat projects the separate Test Store lifetime package into the Pro entitlement. This revision is tested locally but **has not been deployed**; signed purchase, restore, and account-switch QA must confirm it before the backend rollout.
+
 ## Purchase and restore
 
 1. Firebase Auth identifies the person by UID. The app configures RevenueCat with that UID.

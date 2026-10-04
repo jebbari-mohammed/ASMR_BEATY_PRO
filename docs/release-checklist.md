@@ -5,7 +5,7 @@ This checklist records the current release status for the **routine, calendar, s
 ## Firebase deployment and remaining release gates
 
 - [x] Review and deploy the current Functions, Firestore rules, Storage rules, and Hosting to `asmr-skin-coach`.
-- [ ] Confirm Firebase Email/Password sign-in and email verification are enabled for both registered apps.
+- [x] Confirm Firebase Email/Password sign-in and email verification are enabled for both registered apps. The live project-level Identity Toolkit config returned `signIn.email.enabled=true`, `passwordRequired=true`, and a configured verification-email template on October 3, 2026; both app registrations use this project. Signed-device delivery and link handling still need the physical-device checks below.
 - [x] Confirm App Check provider registrations: Android Play Integrity, iOS App Attest and DeviceCheck are present in the production Firebase project.
 - [ ] On final signed physical iPhone and Android builds, prove valid App Check tokens reach the membership callable and paid Firestore flows. Check verified/outdated request metrics for both platforms before changing service enforcement.
 - [x] Deploy and verify the `accountDeletionGuards.expireAt` Firestore TTL policy (**ACTIVE**) and the `state` + `nextCheckAt` composite index (**READY**). The Cloud Scheduler API is enabled, its job is **ENABLED**, and `finalizeDeletedAccountGuards` is **ACTIVE**. A manual run logged zero due guards and zero errors on October 3, 2026.
@@ -19,6 +19,7 @@ This checklist records the current release status for the **routine, calendar, s
 ## Billing on both stores
 
 - [x] Confirm annual and monthly store products are attached to RevenueCat entitlement `asmr_beaty_pro_pro` and current offering `default` in the RevenueCat dashboard. Purchase delivery on signed builds remains open.
+- [ ] Verify the exact-SKU, finite-expiration RevenueCat verifier revision against signed Apple and Play purchase/restore flows, then deploy it and repeat the checks against the live backend. The source fix prevents a Test Store lifetime projection from granting perpetual Pro access, but is not yet live.
 - [ ] Complete a sandbox/closed-test purchase for each platform with the final signed build.
 - [ ] Verify restore, cancellation, failed checkout, expiration, refund, grace period, reinstall, account switch, and offline return.
 - [ ] Compare the displayed localized price, billing period, and any introductory offer against the store checkout sheet.
