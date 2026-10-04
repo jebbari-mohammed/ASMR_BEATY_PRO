@@ -15,6 +15,7 @@ import { RoutineService, RoutineStep, STARTER_STEPS } from '../../src/services/r
 import { OnboardingService } from '../../src/services/onboarding-machine';
 import { buildStarterPlan, StarterPlan } from '../../src/services/personalized-starter';
 import { SkinFeel, SkinFeelCheckinService } from '../../src/services/skin-feel-checkin-service';
+import { skinFeelGuidance } from '../../src/services/skin-feel-guidance';
 import { useAccess } from '../../src/services/access-context';
 
 const localDayKey = () => {
@@ -614,6 +615,7 @@ export default function TodayScreen() {
                 {skinFeel && <Pressable accessibilityRole="button" accessibilityState={{ disabled: checkinSaving }} disabled={checkinSaving} onPress={() => changeSkinFeel(null)} style={styles.checkinRemove}><Text style={styles.checkinRemoveText}>Remove today’s check-in</Text></Pressable>}
                 {(checkinSaving || checkinPendingWrites) && <Text accessibilityLiveRegion="polite" style={styles.checkinStatus}>{checkinSaving ? 'Saving your check-in…' : 'Waiting to sync…'}</Text>}
               </View>
+              {skinFeel && <View style={styles.checkinGuidance}><Ionicons name="heart-outline" size={18} color={colors.primary} /><Text style={styles.checkinGuidanceText}>{skinFeelGuidance(skinFeel)}</Text></View>}
             </> : null}
           {checkinError && <Text accessibilityRole="alert" style={styles.checkinError}>{checkinError}</Text>}
           {checkinError && !checkinIdentity && <Pressable accessibilityRole="button" onPress={() => setReloadRevision(revision => revision + 1)} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable>}
@@ -727,6 +729,8 @@ const styles = StyleSheet.create({
   checkinRemove: { minHeight: 44, justifyContent: 'center' },
   checkinRemoveText: { color: colors.primary, fontSize: 12, textDecorationLine: 'underline' },
   checkinStatus: { color: colors.textSecondary, fontSize: 11 },
+  checkinGuidance: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', backgroundColor: colors.primarySoft, borderRadius: 13, padding: 12, marginTop: 11 },
+  checkinGuidanceText: { flex: 1, color: colors.primary, fontSize: 12, lineHeight: 18 },
   checkinLoader: { marginVertical: 12 },
   checkinError: { color: '#A64032', fontSize: 12, lineHeight: 18, marginTop: 8 },
   checkinPrivacy: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 6 },
