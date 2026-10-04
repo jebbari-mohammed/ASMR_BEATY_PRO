@@ -26,9 +26,21 @@ async function main() {
     await assertFails(setDoc(aliceRoutine, { steps: [{ id: 'm1' }], updatedAt: Date.now() }));
     await assertFails(setDoc(entitlement, { isPro: true, expiresAt: null }));
 
-    await assertFails(setDoc(aliceProfile, { deletionStatus: 'deleting' }));
+    const serverOwnedProfileFields = [
+      'isPro', 'tier', 'subscriptionTier', 'entitlementStatus', 'roles',
+      'isAdmin', 'remainingScans', 'scanAllowanceMonthly', 'credits',
+      'affiliateCommission', 'deletionStatus'
+    ];
+    for (const field of serverOwnedProfileFields) {
+      // A first-write bypass used to be possible for fields blocked only on
+      // update. All server-owned profile metadata must be protected on create.
+      await assertFails(setDoc(aliceProfile, { createdAt: Date.now(), [field]: 'forged' }));
+    }
     await assertSucceeds(setDoc(aliceProfile, { createdAt: Date.now() }));
-    await assertFails(setDoc(aliceProfile, { createdAt: Date.now(), deletionStatus: 'deleting' }));
+    await assertSucceeds(setDoc(aliceProfile, { starterPreferences: { texture: 'dry' } }, { merge: true }));
+    for (const field of serverOwnedProfileFields) {
+      await assertFails(setDoc(aliceProfile, { [field]: 'forged' }, { merge: true }));
+    }
 
     const seed = async (isPro, expiresAt) => testEnv.withSecurityRulesDisabled(async context => {
       await setDoc(doc(context.firestore(), 'users/alice/entitlements/pro'), { isPro, expiresAt });

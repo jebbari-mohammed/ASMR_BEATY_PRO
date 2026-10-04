@@ -33,9 +33,9 @@ service cloud.firestore {
         && (get(entitlement).data.expiresAt == null || get(entitlement).data.expiresAt > request.time);
     }
     
-    // Prevent client from setting or modifying privileged fields
-    function doesNotModifyPrivilegedUserFields() {
-      let forbiddenFields = [
+    // Keep profile creation and updates on the same server-owned field policy.
+    function privilegedUserFields() {
+      return [
         'isPro',
         'tier',
         'subscriptionTier',
@@ -48,7 +48,10 @@ service cloud.firestore {
         'affiliateCommission',
         'deletionStatus'
       ];
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(forbiddenFields);
+    }
+
+    function doesNotModifyPrivilegedUserFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(privilegedUserFields());
     }
     
     // Deny all by default
@@ -99,7 +102,7 @@ service cloud.firestore {
       // User can create their initial profile document
       allow create: if isOwner(userId)
                     && !isDeletionGuarded(userId)
-                    && !request.resource.data.keys().hasAny(['isPro', 'isAdmin', 'roles', 'deletionStatus']);
+                    && !request.resource.data.keys().hasAny(privilegedUserFields());
       
       // User can update profile, but CANNOT mutate server-owned privileged fields
       allow update: if isOwner(userId)
