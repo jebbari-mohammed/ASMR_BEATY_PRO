@@ -131,8 +131,8 @@ test('the moisturizer explanation follows the gentle step for sensitive oily ski
 test('plan caution distinguishes irritating cosmetics from prescribed treatment', () => {
   for (const sensitivityLevel of ['almost_never', 'very_easily'] as const) {
     const caution = buildStarterPlan({ selectedGoals: ['unsure_help_me_decide'], sensitivityLevel }).caution;
-    expect(caution).toMatch(/stop a non-prescribed cosmetic/i);
-    expect(caution).toMatch(/ask your prescriber before changing how you use a prescribed treatment/i);
+    expect(caution).toMatch(/stop using a cosmetic product/i);
+    expect(caution).toMatch(/ask your prescriber before changing a prescribed treatment/i);
     expect(caution).toMatch(/dermatologist.*persistent or severe symptoms/i);
   }
 });

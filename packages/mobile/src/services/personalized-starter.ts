@@ -117,8 +117,8 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
     ? 'Two morning steps and two evening steps make this easy to return to. You can edit every step after joining.'
     : 'A gentle foundation for morning and evening. You can edit every step after joining.';
   const caution = sensitive
-    ? 'You said your skin can react. Use products you already tolerate; skip a step if you do not have a product that feels safe. Stop a non-prescribed cosmetic that stings or burns. Ask your prescriber before changing how you use a prescribed treatment. See a dermatologist for persistent or severe symptoms.'
-    : 'Use products you already tolerate and skip any step that needs a product you do not own. Stop a non-prescribed cosmetic that irritates you. Ask your prescriber before changing how you use a prescribed treatment. See a dermatologist for persistent or severe symptoms.';
+    ? 'You said your skin can react. Use products you already tolerate; skip a step if you do not have a product that feels safe. Stop using a cosmetic product that stings or burns. Ask your prescriber before changing a prescribed treatment. See a dermatologist for persistent or severe symptoms.'
+    : 'Use products you already tolerate and skip any step that needs a product you do not own. Stop using a cosmetic product that irritates you. Ask your prescriber before changing a prescribed treatment. See a dermatologist for persistent or severe symptoms.';
 
   const moisturizerFit = moisturizerApproach === 'damp'
     ? dry ? 'You described tightness, so the moisturizer step suggests applying it to slightly damp skin.'
