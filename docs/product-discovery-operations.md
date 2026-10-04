@@ -80,9 +80,14 @@ and a [Tracking Links API](https://integrations.impact.com/partner-api-reference
 that accepts a `DeepLink` and returns a `TrackingURL`. The local admin script
 uses these documented endpoints. It checks the exact selected program ID,
 Ulta Beauty advertiser name and site, active contract, enabled deep linking,
-and permission for `www.ulta.com` before requesting any product link. It asks
+and an exact `ulta.com` or `www.ulta.com` allowed domain before requesting any product link. It asks
 Impact to generate a regular link for each clean direct Ulta product URL,
 without Sub IDs, visitor IDs, routine data, or other tracking fields.
+Impact's program responses may represent allowed domains as an array or as
+`{ "DeeplinkDomain": "ulta.com" }`; the checker accepts either documented
+shape only when it names Ulta exactly. An `http://` advertiser website in
+program metadata is accepted for brand identity, while every product URL and
+generated tracking URL must still use HTTPS.
 
 The account owner must have joined Ulta's program and have product deep-link
 permission. In Impact, create a narrowly scoped Partner API access token in

@@ -19,12 +19,29 @@ test('requires the exact active Ulta program with permission for product deep li
   for (const bad of [
     { CampaignId: 'other' }, { AdvertiserName: 'Other Brand' },
     { AdvertiserUrl: 'https://www.ulta.com.evil.example' },
+    { AdvertiserUrl: 'ftp://www.ulta.com' },
     { ContractStatus: 'Expired' }, { AllowsDeeplinking: 'false' },
-    { DeeplinkDomains: ['ulta.com'] }
+    { DeeplinkDomains: ['ulta.com.evil.example'] },
+    { DeeplinkDomains: { DeeplinkDomain: 'ulta.com.evil.example' } }
   ]) {
     expect(() => verifyUltaProgram({ ...program, ...bad }, '789')).toThrow('not an active Ulta');
   }
   expect(() => impactProgramUrl('../secret', '789')).toThrow('Invalid Impact');
+});
+
+test('accepts the official Retrieve a program response shape without weakening product URL checks', () => {
+  const officialShape = {
+    ...program,
+    CampaignId: 789,
+    AdvertiserUrl: 'http://www.ulta.com',
+    AllowsDeeplinking: true,
+    DeeplinkDomains: { DeeplinkDomain: 'ulta.com' }
+  };
+  expect(() => verifyUltaProgram(officialShape, '789')).not.toThrow();
+  expect(() => verifyUltaProgram({
+    ...officialShape, DeeplinkDomains: { DeeplinkDomain: ['example.com', 'www.ulta.com'] }
+  }, '789')).not.toThrow();
+  expect(() => validateDirectImport([{ ...products[0], url: 'http://www.ulta.com/p/item' }])).toThrow();
 });
 
 test('rejects commissioned or off-merchant input before asking Impact for links', () => {

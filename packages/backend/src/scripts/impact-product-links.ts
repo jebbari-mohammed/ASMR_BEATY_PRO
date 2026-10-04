@@ -64,17 +64,27 @@ export function verifyUltaProgram(value: unknown, programId: string): void {
   let advertiser: URL;
   try { advertiser = new URL(program.AdvertiserUrl as string); }
   catch { throw new Error('Impact program has no valid advertiser URL'); }
-  const domains = program.DeeplinkDomains;
-  if (program.CampaignId !== programId ||
+  // Impact's current schema shows a string array, while its Retrieve a program
+  // example wraps one or many strings in { DeeplinkDomain: ... }.
+  const suppliedDomains = program.DeeplinkDomains;
+  const domains = Array.isArray(suppliedDomains) ? suppliedDomains :
+    suppliedDomains && typeof suppliedDomains === 'object' && !Array.isArray(suppliedDomains) &&
+    Object.keys(suppliedDomains).length === 1 && Object.hasOwn(suppliedDomains, 'DeeplinkDomain')
+      ? (suppliedDomains as { DeeplinkDomain: unknown }).DeeplinkDomain : undefined;
+  const domainList = Array.isArray(domains) ? domains : [domains];
+  const campaignId = typeof program.CampaignId === 'string' ? program.CampaignId :
+    typeof program.CampaignId === 'number' && Number.isSafeInteger(program.CampaignId)
+      ? String(program.CampaignId) : '';
+  if (campaignId !== programId ||
       typeof program.AdvertiserName !== 'string' ||
       !/^ulta beauty(?:,? inc\.?)?$/i.test(program.AdvertiserName.trim()) ||
-      advertiser.protocol !== 'https:' ||
+      !['http:', 'https:'].includes(advertiser.protocol) ||
       !['ulta.com', 'www.ulta.com'].includes(advertiser.hostname) ||
       advertiser.username || advertiser.password || advertiser.port ||
       program.ContractStatus !== 'Active' ||
-      program.AllowsDeeplinking !== 'true' ||
-      !Array.isArray(domains) ||
-      !domains.some(domain => domain === 'www.ulta.com' || domain === '*.ulta.com')) {
+      (program.AllowsDeeplinking !== 'true' && program.AllowsDeeplinking !== true) ||
+      !domainList.some(domain => typeof domain === 'string' &&
+        ['ulta.com', 'www.ulta.com', '*.ulta.com'].includes(domain))) {
     throw new Error('Impact program is not an active Ulta product deep-link contract');
   }
 }
