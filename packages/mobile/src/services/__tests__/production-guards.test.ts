@@ -470,13 +470,41 @@ test('store purchase cannot be confirmed by reviewer access', async () => {
   try {
     await SubscriptionService.initialize('purchase-user');
     await expect(SubscriptionService.purchasePlan('annual'))
-      .rejects.toThrow('The purchase completed, but Pro is not active yet.');
+      .rejects.toThrow('Do not buy again. Use Restore purchases');
     expect(mockVerify).toHaveBeenCalledWith({ purchaseOnly: true });
     expect(purchasePackage).toHaveBeenCalledTimes(1);
   } finally {
     REVENUECAT_CONFIG.appleApiKey = originalKey;
     mockCurrentUser = null;
   }
+});
+
+test('a completed store checkout with a verification outage stays in restore state', async () => {
+  const originalKey = REVENUECAT_CONFIG.appleApiKey;
+  REVENUECAT_CONFIG.appleApiKey = 'appl_test';
+  mockCurrentUser = { uid: 'purchase-pending', emailVerified: true };
+  (Purchases.getOfferings as jest.Mock).mockResolvedValue({
+    current: { availablePackages: [{ identifier: 'annual' }] }
+  });
+  purchasePackage.mockResolvedValue({});
+  mockVerify.mockRejectedValue(new Error('network unavailable'));
+  try {
+    await SubscriptionService.initialize('purchase-pending');
+    await expect(SubscriptionService.purchasePlan('annual'))
+      .rejects.toThrow('Do not buy again. Use Restore purchases');
+    expect(purchasePackage).toHaveBeenCalledTimes(1);
+    expect(mockVerify).toHaveBeenCalledWith({ purchaseOnly: true });
+  } finally {
+    REVENUECAT_CONFIG.appleApiKey = originalKey;
+    mockCurrentUser = null;
+  }
+});
+
+test('restore cannot mistake an unready store identity for no purchase', async () => {
+  mockCurrentUser = null;
+  await expect(SubscriptionService.restorePurchases())
+    .rejects.toThrow('The store is not ready to restore purchases');
+  expect(Purchases.restorePurchases).not.toHaveBeenCalled();
 });
 
 test('restore reports only an actual store membership', async () => {

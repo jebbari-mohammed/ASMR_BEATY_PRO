@@ -183,6 +183,10 @@ export class SubscriptionService {
       if (rcErr.userCancelled) {
         throw new Error('Purchase was cancelled.');
       }
+      if (rcErr instanceof PurchaseVerificationPendingError) {
+        console.warn('[RevenueCat] Store checkout returned; server verification is pending.');
+        throw rcErr;
+      }
       console.warn('[RevenueCat] Purchase failed:', rcErr.message);
       throw rcErr;
     }
