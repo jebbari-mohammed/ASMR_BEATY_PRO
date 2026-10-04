@@ -37,6 +37,7 @@ This checklist records the current release status for the **routine, calendar, s
 - [x] Replace the App Store annual subscription description, complete monthly and group localization, and enable both products in the 175 configured regions at the existing prices. The copy is saved in App Store Connect.
 - [ ] Add review screenshots and submit the first subscription group with the app version after signed build and billing tests.
 - [x] Publish the App Store privacy label for the actual binary and save public privacy, support, and marketing URLs.
+- [x] Save updated US English App Store and Google Play listing drafts for the exact ten-day, no-automatic-charge access period, personalized starter plan, and optional daily skin-feel check-in. Apple promotional text, description, keywords, and review notes were saved; Play short and full descriptions were saved. Neither listing was submitted for public review. Apple's first-release screenshots and selected public-version build still require update before submission; Play's two screenshots still show the older onboarding.
 - [x] Complete and save the Play Data safety form as a draft, including the live account-deletion URL. Submission awaits target audience, content rating, and reviewer access details.
 - [ ] Complete the remaining Play content declarations and send the saved changes for review after release testing and owner approval.
 - [x] Produce a signed Android release App Bundle with the registered Google Play upload certificate; verify its identity, manifest, and archive integrity.
