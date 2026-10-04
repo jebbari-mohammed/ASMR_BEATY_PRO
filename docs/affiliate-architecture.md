@@ -1,5 +1,10 @@
 # Affiliate Commerce Architecture & Trust Model
 
+> **Historical proposal.** The affiliate offer resolver, sample prices, and
+> generated tracking links described below are not active. Current optional
+> My Shelf product discovery uses verified direct Ulta links and an
+> admin-managed catalog. See [product-discovery-operations.md](product-discovery-operations.md).
+
 ## 1. Product vs. Offer Separation
 
 A skincare product is an independent physical formulation entity. Retail offers are separate merchant instances.

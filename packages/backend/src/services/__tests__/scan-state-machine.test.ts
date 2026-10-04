@@ -7,7 +7,6 @@ import {
 } from '../scan-state-machine.js';
 import { MockSkinProvider } from '../../providers/skin/mock.provider.js';
 import { ScanSession, NormalizedSkinAnalysis, GeminiSkinScanOutputSchema } from '@asmr/shared';
-import { AffiliateResolverService, TRUSTED_MERCHANT_DOMAINS } from '../affiliate-resolver.js';
 import { calculateGeminiCostUsd } from '../../config/pricing.config.js';
 
 describe('ScanStateMachine Unit & Security Gate Tests', () => {
@@ -213,86 +212,5 @@ describe('Gemini Output Schema & Pricing Validation', () => {
     const cost = calculateGeminiCostUsd('gemini-3.8-flash', 11930, 800);
     expect(cost).toBeGreaterThan(0.01); // Approx 1.2 cents ($0.0119)
     expect(cost).toBeLessThan(0.02); // Under 2 cents per complete high-res scan
-  });
-});
-
-describe('Affiliate Resolver Domain Security Tests', () => {
-  test('Approved merchant domain allowlist contains official partner hosts', () => {
-    expect(TRUSTED_MERCHANT_DOMAINS.iherb).toContain('iherb.com');
-    expect(TRUSTED_MERCHANT_DOMAINS.yesstyle).toContain('yesstyle.com');
-  });
-
-  test('Rejects malicious / phishing affiliate URLs', async () => {
-    const mockDb: any = {
-      collectionGroup: () => ({
-        where: () => ({
-          limit: () => ({
-            get: async () => ({
-              empty: false,
-              docs: [
-                {
-                  data: () => ({
-                    offerId: 'phishing_offer',
-                    merchant: 'iherb',
-                    merchantDisplayName: 'Phishing Store',
-                    affiliateUrl: 'https://evil-phishing-site.com/steal-creds'
-                  })
-                }
-              ]
-            })
-          })
-        })
-      }),
-      doc: () => ({ get: async () => ({ exists: false }) })
-    };
-
-    const resolver = new AffiliateResolverService(mockDb);
-    await expect(resolver.resolveOfferUrl('phishing_offer', 'usr_test')).rejects.toThrow(
-      'UNTRUSTED_MERCHANT_DOMAIN'
-    );
-  });
-
-  test('Resolves valid merchant offer with safe subid and legal disclosure', async () => {
-    const mockDb: any = {
-      collectionGroup: () => ({
-        where: () => ({
-          limit: () => ({
-            get: async () => ({
-              empty: false,
-              docs: [
-                {
-                  data: () => ({
-                    offerId: 'valid_iherb',
-                    merchant: 'iherb',
-                    merchantDisplayName: 'iHerb',
-                    affiliateUrl: 'https://www.iherb.com/pr/calming-serum/12345'
-                  })
-                }
-              ]
-            })
-          })
-        })
-      }),
-      doc: () => ({ get: async () => ({ exists: false }) })
-    };
-
-    // Case A: Affiliate credentials NOT configured -> treated as direct merchant fallback (no fake tracking IDs)
-    delete process.env.IHERB_AFFILIATE_ID;
-    const resolver = new AffiliateResolverService(mockDb);
-    const unmonetizedResult = await resolver.resolveOfferUrl('valid_iherb', 'usr_pro_12345');
-
-    expect(unmonetizedResult.resolvedUrl).toContain('https://www.iherb.com/pr/calming-serum/12345');
-    expect(unmonetizedResult.resolvedUrl).not.toContain('subid=');
-    expect(unmonetizedResult.isAffiliateMonetized).toBe(false);
-
-    // Case B: Real affiliate ID configured in environment -> attribution appended
-    process.env.IHERB_AFFILIATE_ID = 'REAL_PARTNER_999';
-    const monetizedResult = await resolver.resolveOfferUrl('valid_iherb', 'usr_pro_12345');
-
-    expect(monetizedResult.resolvedUrl).toContain('rcode=REAL_PARTNER_999');
-    expect(monetizedResult.resolvedUrl).toContain('subid=asmr_usr_pro_12');
-    expect(monetizedResult.isAffiliateMonetized).toBe(true);
-    expect(monetizedResult.disclosure).toContain('We may earn a commission');
-    delete process.env.IHERB_AFFILIATE_ID;
   });
 });

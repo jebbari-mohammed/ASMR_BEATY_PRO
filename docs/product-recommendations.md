@@ -1,5 +1,10 @@
 # Product Recommendations & Affiliate Engine (Production V1)
 
+> **Historical proposal.** This recommendation engine, ingredient scoring,
+> generated affiliate links, and sample catalog are not active. Current
+> optional My Shelf product discovery is an unpersonalized admin-managed list;
+> see [product-discovery-operations.md](product-discovery-operations.md).
+
 ## 1. Safety-First Architecture
 
 The AI Skin Coach prioritizes **user trust and dermatological safety over affiliate conversions**. The conversational LLM never selects or invents products out of thin air.

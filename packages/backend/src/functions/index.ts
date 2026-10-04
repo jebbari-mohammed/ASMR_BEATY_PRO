@@ -12,6 +12,7 @@ import { StoreAccessResolver } from '../services/store-access-resolver.js';
 import { SubscriptionVerificationLimiter } from '../services/subscription-verification-limiter.js';
 import { SkinFeelCheckinWriter } from '../services/skin-feel-checkin-writer.js';
 import { InvalidRevenueCatWebhookError, RevenueCatWebhookReconciler } from '../services/revenuecat-webhook-reconciler.js';
+import { ProductDiscoveryCatalog } from '../services/product-discovery.js';
 import { requireRecentAuthentication } from './recent-auth.js';
 
 if (admin.apps.length === 0) {
@@ -27,6 +28,7 @@ const reviewAccessGrant = new ReviewAccessGrant(db, admin.auth());
 const appFreeTrial = new AppFreeTrial(db, admin.auth());
 const subscriptionVerificationLimiter = new SubscriptionVerificationLimiter(db);
 const skinFeelCheckinWriter = new SkinFeelCheckinWriter(db, admin.auth());
+const productDiscoveryCatalog = new ProductDiscoveryCatalog(db);
 const trialStorePreference = new TrialStorePreference(
   db,
   userId => new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(userId),
@@ -188,6 +190,21 @@ export const chatWithSkinCoach = onCall({ enforceAppCheck: true, secrets: [] }, 
 /** Legacy affiliate resolution is disabled until the product catalog is live. */
 export const resolveAffiliateOffer = onCall({ enforceAppCheck: true }, async () => {
   throw new HttpsError('failed-precondition', 'Partner offers are not available in this release.');
+});
+
+/** Public editorial product discovery for a signed-in, verified app account. */
+export const getProductDiscovery = onCall({ enforceAppCheck: true }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to view product ideas.');
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError('permission-denied', 'Verify your email before viewing product ideas.');
+  }
+  if (request.data == null || typeof request.data !== 'object' || Array.isArray(request.data) ||
+      Object.keys(request.data).length !== 0) {
+    throw new HttpsError('invalid-argument', 'This catalog does not accept personal filters.');
+  }
+  // This read-only list is not personalized and contains no private account
+  // data; the paid My Shelf UI keeps its separate membership gate.
+  return productDiscoveryCatalog.list();
 });
 
 /** Save or remove today's fixed-choice self-report with a server-owned TTL. */

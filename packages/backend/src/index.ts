@@ -6,7 +6,7 @@ export * from './providers/ai/base.provider.js';
 export * from './providers/ai/openai.provider.js';
 export * from './providers/ai/gemini.provider.js';
 export * from './services/scan-state-machine.js';
-export * from './services/affiliate-resolver.js';
+export * from './services/product-discovery.js';
 export * from './services/account-deletion.service.js';
 export * from './config/pricing.config.js';
 export * from './functions/index.js';
