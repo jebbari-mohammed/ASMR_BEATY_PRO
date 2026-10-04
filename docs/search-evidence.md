@@ -56,6 +56,10 @@ private-test shortcut.
 
 ## Measurement gate
 
+For Google's AI Overviews and AI Mode, the [official guidance](https://developers.google.com/search/docs/appearance/ai-features) says indexed pages with eligible snippets use the same SEO fundamentals; no special AI markup or machine-readable file is required. Its [generative search guide](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide) explicitly advises against unnecessary `llms.txt` files and other AEO/GEO shortcuts. The existing routine guide gives a direct, visible answer, links its medical source notes, and keeps its Article markup aligned with the page. Measure actual Search Console visibility instead of treating an experimental Lighthouse `llms.txt` audit as a ranking requirement.
+
+The October 3 live Lighthouse audit scored both the homepage and routine guide 98 for mobile performance, 100 for accessibility and best practices, and 92 for SEO. The SEO deduction is the host-root `robots.txt` check: GitHub Pages hosts this repository under `/ASMR_BEATY_PRO/`, so this project cannot place a file at the host root. Search Console separately confirmed the homepage and guide are indexed and crawlable. Do not move their canonicals solely to raise this synthetic score.
+
 Google Search Console has indexed the homepage and routine guide, but the
 sitemap report still shows a temporary processing error. Fresh crawls were
 requested after the October 3 content updates. Recheck actual queries, clicks,
