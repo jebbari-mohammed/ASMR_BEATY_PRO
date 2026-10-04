@@ -5,7 +5,11 @@ import * as functionsV1 from 'firebase-functions/v1';
 import { AccountDeletionService } from '../services/account-deletion.service.js';
 import { RevenueCatVerifier } from '../services/revenuecat-verifier.js';
 import { VerifiedEntitlementStore } from '../services/verified-entitlement-store.js';
+import { ReviewAccessGrant } from '../services/review-access-grant.js';
+import { AppFreeTrial, TrialAccountUnavailableError } from '../services/app-free-trial.js';
+import { TrialStorePreference } from '../services/trial-store-preference.js';
 import { SubscriptionVerificationLimiter } from '../services/subscription-verification-limiter.js';
+import { SkinFeelCheckinWriter } from '../services/skin-feel-checkin-writer.js';
 import { requireRecentAuthentication } from './recent-auth.js';
 
 if (admin.apps.length === 0) {
@@ -17,7 +21,15 @@ db.settings({ ignoreUndefinedProperties: true });
 const storage = admin.storage();
 const deletionService = new AccountDeletionService(db, storage, admin.auth());
 const entitlementStore = new VerifiedEntitlementStore(db, admin.auth());
+const reviewAccessGrant = new ReviewAccessGrant(db, admin.auth());
+const appFreeTrial = new AppFreeTrial(db, admin.auth());
 const subscriptionVerificationLimiter = new SubscriptionVerificationLimiter(db);
+const skinFeelCheckinWriter = new SkinFeelCheckinWriter(db, admin.auth());
+const trialStorePreference = new TrialStorePreference(
+  db,
+  userId => new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(userId),
+  (userId, verified) => entitlementStore.cache(userId, verified)
+);
 
 /**
  * 1. RevenueCat Server-to-Server Webhook Handler
@@ -75,7 +87,7 @@ export const onRevenueCatWebhook = onRequest(
   }
 );
 
-/** Verify the current RevenueCat entitlement for the authenticated Firebase user. */
+/** Verify a store purchase, active app trial, or explicit store-review grant. */
 export const verifySubscriptionAccess = onCall(
   { secrets: ['REVENUECAT_SECRET_API_KEY'], enforceAppCheck: true },
   async (request) => {
@@ -87,18 +99,69 @@ export const verifySubscriptionAccess = onCall(
     }
     try {
       await subscriptionVerificationLimiter.consume(request.auth.uid);
+      // Purchase and restore must prove a store transaction. A reviewer grant
+      // is valid for app access, but cannot make a purchase look successful.
+      if (request.data?.purchaseOnly !== true) {
+        const reviewAccess = await reviewAccessGrant.verify(request.auth.uid);
+        if (reviewAccess) return reviewAccess;
+        const trialAccess = await appFreeTrial.verify(request.auth.uid);
+        if (trialAccess) {
+          return await trialStorePreference.current(request.auth.uid) ?? trialAccess;
+        }
+      }
       const verified = await new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(request.auth.uid);
       if (!await entitlementStore.cache(request.auth.uid, verified)) {
         throw new HttpsError('failed-precondition', 'This account is unavailable.');
       }
-      return verified;
+      return { ...verified, source: 'revenuecat_server' as const };
     } catch (error) {
       if (error instanceof HttpsError) throw error;
+      if (error instanceof TrialAccountUnavailableError) {
+        throw new HttpsError('failed-precondition', error.message);
+      }
       console.error('[Billing] Subscription verification unavailable:', error);
       throw new HttpsError('unavailable', 'Subscription verification is temporarily unavailable.');
     }
   }
 );
+
+/** An account can see its one-time, no-billing trial status before choosing. */
+export const getFreeTrialStatus = onCall({ enforceAppCheck: true }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to view free access.');
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError('permission-denied', 'Verify your email before starting free access.');
+  }
+  try {
+    await subscriptionVerificationLimiter.consume(request.auth.uid);
+    return await appFreeTrial.status(request.auth.uid);
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    if (error instanceof TrialAccountUnavailableError) {
+      throw new HttpsError('failed-precondition', error.message);
+    }
+    console.error('[Trial] Status unavailable:', error);
+    throw new HttpsError('unavailable', 'Free access status is temporarily unavailable.');
+  }
+});
+
+/** Start exactly ten days of free app access without initiating a store charge. */
+export const startFreeTrial = onCall({ enforceAppCheck: true }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to start free access.');
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError('permission-denied', 'Verify your email before starting free access.');
+  }
+  try {
+    await subscriptionVerificationLimiter.consume(request.auth.uid);
+    return await appFreeTrial.start(request.auth.uid);
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    if (error instanceof TrialAccountUnavailableError) {
+      throw new HttpsError('failed-precondition', error.message);
+    }
+    console.error('[Trial] Start failed:', error);
+    throw new HttpsError('unavailable', 'Free access could not be started. Please try again.');
+  }
+});
 
 /**
  * 2. Skin analysis remains unavailable until independent accuracy and bias
@@ -116,6 +179,30 @@ export const chatWithSkinCoach = onCall({ enforceAppCheck: true, secrets: [] }, 
 /** Legacy affiliate resolution is disabled until the product catalog is live. */
 export const resolveAffiliateOffer = onCall({ enforceAppCheck: true }, async () => {
   throw new HttpsError('failed-precondition', 'Partner offers are not available in this release.');
+});
+
+/** Save or remove today's fixed-choice self-report with a server-owned TTL. */
+export const changeSkinFeelCheckin = onCall({ enforceAppCheck: true }, async request => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in to check in.');
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError('permission-denied', 'Verify your email before checking in.');
+  }
+  const data = request.data;
+  if (!data || typeof data !== 'object' || Array.isArray(data) ||
+      Object.keys(data).length !== 2 || !Object.hasOwn(data, 'day') || !Object.hasOwn(data, 'feel')) {
+    throw new HttpsError('invalid-argument', 'Choose a valid daily skin feel.');
+  }
+  try {
+    if (!await skinFeelCheckinWriter.change(request.auth.uid, data.day, data.feel)) {
+      throw new HttpsError('permission-denied', 'Active app access is required to check in.');
+    }
+    return { saved: true };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    if (error instanceof RangeError) throw new HttpsError('invalid-argument', error.message);
+    console.error('[Checkin] Save unavailable:', { errorName: error instanceof Error ? error.name : 'UnknownError' });
+    throw new HttpsError('unavailable', 'Your check-in could not be saved. Please try again.');
+  }
 });
 
 /** Remove a user's cloud records and Firebase account. */

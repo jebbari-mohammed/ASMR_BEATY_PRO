@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import * as FileSystem from 'expo-file-system/legacy';
 import Purchases from 'react-native-purchases';
+import type { PurchasesPackage } from 'react-native-purchases';
 import { REVENUECAT_CONFIG, SubscriptionService } from '../subscription-service';
 import { ScanService } from '../scan-service';
 import { CoachAIEngine } from '../coach-ai-engine';
@@ -36,6 +37,8 @@ jest.mock('react-native-purchases', () => ({
     getOfferings: jest.fn(),
     purchasePackage: jest.fn(),
     restorePurchases: jest.fn(),
+    checkTrialOrIntroductoryPriceEligibility: jest.fn(),
+    INTRO_ELIGIBILITY_STATUS: { INTRO_ELIGIBILITY_STATUS_ELIGIBLE: 2 },
     logIn: jest.fn(),
     logOut: jest.fn()
   }
@@ -66,6 +69,7 @@ beforeEach(() => {
   storeSet.mockReset().mockResolvedValue(undefined);
   storeDelete.mockResolvedValue(undefined);
   mockProfileSet.mockReset().mockResolvedValue(undefined);
+  mockVerify.mockReset();
   (Purchases.logIn as jest.Mock).mockReset().mockResolvedValue(undefined);
   (Purchases.logOut as jest.Mock).mockReset().mockResolvedValue(undefined);
   (FileSystem.writeAsStringAsync as jest.Mock).mockReset().mockResolvedValue(undefined);
@@ -448,6 +452,102 @@ test('a verification burst limit tells the member when to retry', async () => {
     await SubscriptionService.initialize('alice');
     await expect(SubscriptionService.hasActiveEntitlement())
       .rejects.toThrow('Wait a minute, then try again.');
+  } finally {
+    REVENUECAT_CONFIG.appleApiKey = originalKey;
+    mockCurrentUser = null;
+  }
+});
+
+test('store purchase cannot be confirmed by reviewer access', async () => {
+  const originalKey = REVENUECAT_CONFIG.appleApiKey;
+  REVENUECAT_CONFIG.appleApiKey = 'appl_test';
+  mockCurrentUser = { uid: 'purchase-user', emailVerified: true };
+  (Purchases.getOfferings as jest.Mock).mockResolvedValue({
+    current: { availablePackages: [{ identifier: 'annual' }] }
+  });
+  purchasePackage.mockResolvedValue({});
+  mockVerify.mockResolvedValue({ data: { isPro: true, source: 'store_review' } });
+  try {
+    await SubscriptionService.initialize('purchase-user');
+    await expect(SubscriptionService.purchasePlan('annual'))
+      .rejects.toThrow('The purchase completed, but Pro is not active yet.');
+    expect(mockVerify).toHaveBeenCalledWith({ purchaseOnly: true });
+    expect(purchasePackage).toHaveBeenCalledTimes(1);
+  } finally {
+    REVENUECAT_CONFIG.appleApiKey = originalKey;
+    mockCurrentUser = null;
+  }
+});
+
+test('restore reports only an actual store membership', async () => {
+  const originalKey = REVENUECAT_CONFIG.appleApiKey;
+  REVENUECAT_CONFIG.appleApiKey = 'appl_test';
+  mockCurrentUser = { uid: 'restore-user', emailVerified: true };
+  (Purchases.restorePurchases as jest.Mock).mockResolvedValue({});
+  try {
+    await SubscriptionService.initialize('restore-user');
+    mockVerify.mockResolvedValueOnce({ data: { isPro: true, source: 'store_review' } });
+    await expect(SubscriptionService.restorePurchases()).resolves.toBe(false);
+    mockVerify.mockResolvedValueOnce({ data: { isPro: true, source: 'app_trial' } });
+    await expect(SubscriptionService.restorePurchases()).resolves.toBe(false);
+    mockVerify.mockResolvedValueOnce({ data: { isPro: true, status: 'active', tier: 'PRO' } });
+    await expect(SubscriptionService.restorePurchases()).resolves.toBe(true);
+    expect(mockVerify).toHaveBeenCalledWith({ purchaseOnly: true });
+  } finally {
+    REVENUECAT_CONFIG.appleApiKey = originalKey;
+    mockCurrentUser = null;
+  }
+});
+
+test('exact free access does not require store configuration or start silently', async () => {
+  mockCurrentUser = { uid: 'free-user', emailVerified: true };
+  const originalKey = REVENUECAT_CONFIG.appleApiKey;
+  REVENUECAT_CONFIG.appleApiKey = 'appl_placeholder_asmr';
+  try {
+    mockVerify.mockResolvedValueOnce({ data: { eligible: true, active: false, endsAt: null } });
+    await expect(SubscriptionService.getFreeTrialStatus()).resolves.toEqual({
+      eligible: true, active: false, endsAt: null
+    });
+    expect(mockVerify).toHaveBeenCalledTimes(1);
+    mockVerify.mockResolvedValueOnce({ data: { eligible: false, active: true, endsAt: '2026-10-14T03:00:00.000Z' } });
+    await expect(SubscriptionService.startFreeTrial()).resolves.toMatchObject({ active: true });
+    const expiresAtMs = Date.now() + 10 * 24 * 60 * 60 * 1000;
+    mockVerify.mockResolvedValueOnce({ data: { isPro: true, source: 'app_trial', expiresAtMs } });
+    await expect(SubscriptionService.verifyAccess()).resolves.toEqual({ active: true, expiresAtMs, source: 'app_trial' });
+  } finally {
+    REVENUECAT_CONFIG.appleApiKey = originalKey;
+    mockCurrentUser = null;
+  }
+});
+
+test('free access rejects malformed server status and unverified accounts', async () => {
+  mockCurrentUser = { uid: 'free-user', emailVerified: true };
+  mockVerify.mockResolvedValueOnce({ data: { eligible: true, active: true } });
+  await expect(SubscriptionService.getFreeTrialStatus()).rejects.toThrow('temporarily unavailable');
+  mockVerify.mockResolvedValueOnce({ data: { eligible: true, active: true, endsAt: '2026-10-14T03:00:00.000Z' } });
+  await expect(SubscriptionService.getFreeTrialStatus()).rejects.toThrow('temporarily unavailable');
+  mockVerify.mockResolvedValueOnce({ data: { eligible: false, active: false, endsAt: null } });
+  await expect(SubscriptionService.startFreeTrial()).rejects.toThrow('Could not start free access');
+  mockCurrentUser = { uid: 'unverified', emailVerified: false };
+  await expect(SubscriptionService.startFreeTrial()).rejects.toThrow('Verify your email');
+});
+
+test('trial wording is withheld when iOS eligibility is unknown or unavailable', async () => {
+  const originalKey = REVENUECAT_CONFIG.appleApiKey;
+  REVENUECAT_CONFIG.appleApiKey = 'appl_test';
+  mockCurrentUser = { uid: 'trial-user', emailVerified: true };
+  const pkg = { identifier: 'annual', product: {
+    identifier: 'skincoach_3999_1y', introPrice: { price: 0, period: 'P2W' }
+  } } as PurchasesPackage;
+  const check = Purchases.checkTrialOrIntroductoryPriceEligibility as jest.Mock;
+  try {
+    await SubscriptionService.initialize('trial-user');
+    check.mockResolvedValueOnce({ skincoach_3999_1y: { status: 0 } });
+    await expect(SubscriptionService.getFreeTrialPeriods([pkg])).resolves.toEqual({});
+    check.mockRejectedValueOnce(new Error('StoreKit unavailable'));
+    await expect(SubscriptionService.getFreeTrialPeriods([pkg])).resolves.toEqual({});
+    check.mockResolvedValueOnce({ skincoach_3999_1y: { status: 2 } });
+    await expect(SubscriptionService.getFreeTrialPeriods([pkg])).resolves.toEqual({ annual: 'P2W' });
   } finally {
     REVENUECAT_CONFIG.appleApiKey = originalKey;
     mockCurrentUser = null;

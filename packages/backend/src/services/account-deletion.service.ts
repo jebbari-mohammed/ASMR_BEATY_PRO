@@ -24,6 +24,8 @@ export class AccountDeletionService {
     const guard = this.db.collection('accountDeletionGuards').doc(userId);
     const profile = this.db.collection('users').doc(userId);
     const entitlement = profile.collection('entitlements').doc('pro');
+    const reviewGrant = profile.collection('entitlements').doc('review');
+    const trial = profile.collection('entitlements').doc('trial');
     await this.db.runTransaction(async (transaction) => {
       const existing = await transaction.get(guard);
       const state = existing.get('state');
@@ -41,6 +43,8 @@ export class AccountDeletionService {
         // Revoking this document in the same commit closes paid client access
         // before recursiveDelete begins.
         transaction.delete(entitlement);
+        transaction.delete(reviewGrant);
+        transaction.delete(trial);
       }
     });
 

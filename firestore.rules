@@ -22,16 +22,50 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/accountDeletionGuards/$(userId));
     }
 
-    // This document is written only by the backend after a RevenueCat API check.
-    // An expiry timestamp keeps Firestore access from outliving the purchase.
-    function hasPaidAccess(userId) {
+    // A verified store purchase is cached only after the backend RevenueCat check.
+    function hasVerifiedPurchase(userId) {
       let entitlement = /databases/$(database)/documents/users/$(userId)/entitlements/pro;
-      return isOwner(userId)
-        && request.auth.token.email_verified == true
-        && exists(entitlement)
+      return exists(entitlement)
         && get(entitlement).data.isPro == true
         && get(entitlement).data.expiresAt is timestamp
         && get(entitlement).data.expiresAt > request.time;
+    }
+
+    // Only an Admin-issued, bounded grant for this account may replace a
+    // purchase during store review. Clients cannot write this document.
+    function hasReviewGrant(userId) {
+      let grant = /databases/$(database)/documents/users/$(userId)/entitlements/review;
+      return exists(grant)
+        && get(grant).data.uid == userId
+        && get(grant).data.purpose == 'store_review'
+        && get(grant).data.enabled == true
+        && get(grant).data.issuedAt is timestamp
+        && get(grant).data.expiresAt is timestamp
+        && get(grant).data.issuedAt <= request.time
+        && get(grant).data.expiresAt > request.time
+        && get(grant).data.expiresAt <= get(grant).data.issuedAt + duration.value(30, 'd');
+    }
+
+    // A ten-day free app lease starts only through startFreeTrial. The client
+    // cannot write or extend it, and an expired document remains to block a
+    // second trial for this account.
+    function hasAppTrial(userId) {
+      let trial = /databases/$(database)/documents/users/$(userId)/entitlements/trial;
+      return exists(trial)
+        && get(trial).data.uid == userId
+        && get(trial).data.purpose == 'app_trial'
+        && get(trial).data.startedAt is timestamp
+        && get(trial).data.endsAt is timestamp
+        && get(trial).data.startedAt <= request.time
+        && get(trial).data.endsAt > request.time
+        && get(trial).data.endsAt == get(trial).data.startedAt + duration.value(10, 'd');
+    }
+
+    function hasPaidAccess(userId) {
+      return isOwner(userId)
+        && request.auth.token.email_verified == true
+        && (hasVerifiedPurchase(userId) ||
+            (!isDeletionGuarded(userId) && (hasReviewGrant(userId) || hasAppTrial(userId))));
     }
     
     // Keep profile creation and updates on the same server-owned field policy.
@@ -112,6 +146,12 @@ service cloud.firestore {
       // Account deletion must run through deleteUserAccount so nested documents,
       // storage objects, and the Auth record are removed together.
       allow delete: if false;
+
+      // Entitlement documents are server-owned. Trial state is exposed through
+      // authenticated callables, so clients need no direct document access.
+      match /entitlements/{entitlementId} {
+        allow read, write: if false;
+      }
       
       // 1. Skin Scan Sessions (Client can initiate session, but server writes status changes & snapshots)
       match /skinScans/{scanId} {
@@ -151,6 +191,13 @@ service cloud.firestore {
           && request.resource.data.completedIds is list
           && request.resource.data.completedIds.size() <= 20
           && request.resource.data.updatedAt is int;
+      }
+
+      // Optional fixed-choice self-reports are written by an App Check callable
+      // so the server controls the 30-day TTL timestamp. Clients only read.
+      match /skinFeelCheckins/{dayId} {
+        allow read: if hasPaidAccess(userId);
+        allow write: if false;
       }
       
       // 5. My Shelf (Owned products)

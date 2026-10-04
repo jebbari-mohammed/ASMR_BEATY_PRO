@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ImageBackground, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,13 +8,14 @@ import type { PurchasesPackage } from 'react-native-purchases';
 import auth from '@react-native-firebase/auth';
 import { localImages } from '../../src/theme/images';
 import { colors } from '../../src/theme/tokens';
-import { SubscriptionService } from '../../src/services/subscription-service';
+import { FreeTrialStatus, SubscriptionService } from '../../src/services/subscription-service';
 import { useAccess } from '../../src/services/access-context';
 import { EditorialStatusBackdrop } from '../../src/components/EditorialStatusBackdrop';
 import { OnboardingService } from '../../src/services/onboarding-machine';
 import { buildStarterPlan, StarterPlan } from '../../src/services/personalized-starter';
 import { annualSavingsPercent } from '../../src/services/paywall-pricing';
 import { UnsafeLocalCleanupError } from '../../src/services/access-signout';
+import { trialPeriodLabel } from '../../src/services/store-trial-offer';
 
 function periodLabel(pkg: PurchasesPackage): string {
   const period = pkg.product.subscriptionPeriod;
@@ -33,40 +34,69 @@ function planTitle(pkg: PurchasesPackage): string {
 export default function PaywallScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { state, email, error: accessError, refresh, signOut } = useAccess();
+  const { state, email, error: accessError, trialEndsAtMs, refresh, signOut } = useAccess();
   const [packages, setPackages] = useState<PurchasesPackage[]>([]);
+  const [freeTrials, setFreeTrials] = useState<Record<string, string>>({});
+  const [appTrial, setAppTrial] = useState<FreeTrialStatus | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [storeLoading, setStoreLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [storeError, setStoreError] = useState<string | null>(null);
   const [switchAccountError, setSwitchAccountError] = useState<string | null>(null);
   const [starterPlanState, setStarterPlanState] = useState<{ uid: string; plan: StarterPlan } | null>(null);
+  const loadId = useRef(0);
   const currentUid = auth().currentUser?.uid ?? null;
   const starterPlan = starterPlanState?.uid === currentUid ? starterPlanState.plan : null;
 
   const load = useCallback(async () => {
+    const requestedForUid = auth().currentUser?.uid;
+    const requestId = ++loadId.current;
+    const isCurrent = () => loadId.current === requestId && auth().currentUser?.uid === requestedForUid;
     setLoading(true);
+    setStoreLoading(true);
     setError(null);
-    try {
-      const available = await SubscriptionService.getStorePackages();
+    setStoreError(null);
+    const statusTask = SubscriptionService.getFreeTrialStatus().then(status => {
+      if (!isCurrent()) return;
+      setAppTrial(status);
+    }).catch(() => {
+      if (!isCurrent()) return;
+      setAppTrial(null);
+      setError('Free access could not be checked. Reload to try again.');
+    }).finally(() => {
+      if (isCurrent()) setLoading(false);
+    });
+    const storeTask = SubscriptionService.getStorePackages().then(async available => {
+      if (!isCurrent()) return;
       setPackages(available);
+      setFreeTrials({});
       const annual = available.find((pkg) => pkg.packageType === 'ANNUAL');
       setSelected((current) => current && available.some((pkg) => pkg.identifier === current) ? current : (annual ?? available[0])?.identifier ?? null);
-      if (!available.length) setError('Subscription plans are unavailable in the store right now. Please try again later.');
-    } catch {
-      setError('Store plans are unavailable on this device right now. Check your store account or connection, then reload.');
-    } finally { setLoading(false); }
+      if (!available.length) setStoreError('Subscription plans are unavailable in the store right now. Please try again later.');
+      setStoreLoading(false);
+      const periods = await SubscriptionService.getFreeTrialPeriods(available).catch(() => ({}));
+      if (isCurrent()) setFreeTrials(periods);
+    }).catch(() => {
+      if (!isCurrent()) return;
+      setPackages([]);
+      setFreeTrials({});
+      setStoreError('Store plans are unavailable on this device right now. Check your store account or connection, then reload.');
+      setStoreLoading(false);
+    });
+    await Promise.allSettled([statusTask, storeTask]);
   }, []);
 
   useEffect(() => {
     if (state === 'signedOut' || state === 'verifyEmail') router.replace('/account');
-    if (state === 'subscribed') router.replace('/(tabs)/today');
+    if (state === 'subscribed' && trialEndsAtMs === null) router.replace('/(tabs)/today');
     if (state === 'unavailable') router.replace('/access-unavailable');
-    if (state === 'paywall') load();
-  }, [state, router, load]);
+    if (state === 'paywall' || (state === 'subscribed' && trialEndsAtMs !== null)) load();
+  }, [state, trialEndsAtMs, router, load]);
 
   useEffect(() => {
-    if (state !== 'paywall') return;
+    if (state !== 'paywall' && !(state === 'subscribed' && trialEndsAtMs !== null)) return;
     const uid = currentUid;
     if (!uid) return;
     let active = true;
@@ -76,9 +106,13 @@ export default function PaywallScreen() {
       }
     }).catch(() => { if (active) setStarterPlanState(null); });
     return () => { active = false; };
-  }, [state, currentUid]);
+  }, [state, trialEndsAtMs, currentUid]);
 
   const plan = packages.find((item) => item.identifier === selected);
+  const selectedTrial = plan ? trialPeriodLabel(freeTrials[plan.identifier] ?? null) : null;
+  const canStartAppTrial = appTrial?.eligible === true;
+  const activeAppTrial = appTrial?.active === true;
+  const completedAppTrial = appTrial?.eligible === false && appTrial.active === false && !!appTrial.endsAt;
   const annual = packages.find((item) => item.packageType === 'ANNUAL');
   const monthly = packages.find((item) => item.packageType === 'MONTHLY');
   const savings = annualSavingsPercent(
@@ -93,6 +127,7 @@ export default function PaywallScreen() {
     try {
       await SubscriptionService.purchasePlan(plan.identifier);
       await refresh();
+      router.replace('/(tabs)/today');
     } catch (cause: any) {
       if (cause?.userCancelled || String(cause?.message).toLowerCase().includes('cancelled')) return;
       if (String(cause?.message).includes('Membership verification is temporarily unavailable')) {
@@ -100,6 +135,18 @@ export default function PaywallScreen() {
         return;
       }
       setError(cause instanceof Error ? cause.message : 'Could not complete purchase.');
+    } finally { setBusy(false); }
+  }
+
+  async function startFreeAccess() {
+    if (!canStartAppTrial || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await SubscriptionService.startFreeTrial();
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not start free access. Please try again.');
     } finally { setBusy(false); }
   }
 
@@ -136,7 +183,7 @@ export default function PaywallScreen() {
           <LinearGradient colors={['rgba(17,34,25,0.89)', 'rgba(17,34,25,0.34)', 'rgba(17,34,25,0.05)']} style={styles.heroShade}>
             <Text style={styles.brand}>ASMR BEAUTY  /  YOUR PRIVATE RITUAL</Text>
             <Text style={styles.headline}>A small ritual. A place to return.</Text>
-            <Text style={styles.heroCopy}>Your plan is ready. Make it part of your actual day.</Text>
+            <Text style={styles.heroCopy}>{canStartAppTrial ? 'Your plan is ready. Give it ten real days in your routine.' : 'Your plan is ready. Make it part of your actual day.'}</Text>
           </LinearGradient>
         </ImageBackground>
         <View style={styles.body}>
@@ -151,17 +198,32 @@ export default function PaywallScreen() {
             <View style={styles.weekPromise}><Ionicons name="calendar-outline" size={17} color={colors.primary} /><Text style={styles.weekPromiseText}>Your first-week path is ready to follow inside.</Text></View>
           </View>}
           <Text style={styles.valueLine}>Everything you need to keep showing up for your skin, in one quiet place.</Text>
-          <Text style={styles.sectionLabel}>CHOOSE YOUR MEMBERSHIP</Text>
-          {loading ? <ActivityIndicator style={{ margin: 25 }} color={colors.primary} /> : packages.map((pkg) => (
-            <Pressable key={pkg.identifier} accessibilityRole="radio" accessibilityState={{ selected: selected === pkg.identifier }} accessibilityLabel={`${planTitle(pkg)}, ${pkg.product.priceString} per ${periodLabel(pkg)}${pkg.packageType === 'ANNUAL' && savings !== null ? `, save ${savings} percent compared with monthly` : ''}`} onPress={() => setSelected(pkg.identifier)} style={[styles.plan, selected === pkg.identifier && styles.planSelected]}>
-              <View style={[styles.radio, selected === pkg.identifier && styles.radioSelected]}>{selected === pkg.identifier && <View style={styles.radioCenter} />}</View>
-              <View style={{ flex: 1 }}><View style={styles.planHeading}><Text style={styles.planTitle}>{planTitle(pkg)}</Text>{pkg.packageType === 'ANNUAL' && savings !== null && <Text style={styles.savings}>SAVE {savings}% VS MONTHLY</Text>}</View><Text style={styles.planCaption}>Billed {pkg.product.priceString} per {periodLabel(pkg)}</Text></View>
+          {canStartAppTrial && <View style={styles.freeAccessCard}>
+            <Text style={styles.freeAccessEyebrow}>TEN DAYS TO MAKE IT YOURS</Text>
+            <Text style={styles.freeAccessTitle}>Try the full ritual, free.</Text>
+            <Text style={styles.freeAccessCopy}>Start when you are ready. No payment method is needed, and nothing is charged automatically. After ten days, choose a store subscription to keep using your routine.</Text>
+          </View>}
+          {activeAppTrial && <View style={styles.freeAccessCard}>
+            <Text style={styles.freeAccessEyebrow}>YOUR FREE ACCESS IS OPEN</Text>
+            <Text style={styles.freeAccessTitle}>Stay with your ritual.</Text>
+            <Text style={styles.freeAccessCopy}>You can choose a membership now to keep your routine after your ten free days. The store will show the price and any eligible offer before you confirm.</Text>
+          </View>}
+          {completedAppTrial && <View style={styles.freeAccessCard}>
+            <Text style={styles.freeAccessEyebrow}>YOUR FREE ACCESS IS COMPLETE</Text>
+            <Text style={styles.freeAccessTitle}>Keep your ritual close.</Text>
+            <Text style={styles.freeAccessCopy}>Your plan and record are saved. Choose a membership to continue.</Text>
+          </View>}
+          <Text style={styles.sectionLabel}>{canStartAppTrial ? 'MEMBERSHIP AFTER FREE ACCESS' : 'CHOOSE YOUR MEMBERSHIP'}</Text>
+          {storeLoading ? <ActivityIndicator style={{ margin: 25 }} color={colors.primary} /> : packages.map((pkg) => (
+            <Pressable key={pkg.identifier} disabled={canStartAppTrial} accessibilityRole={canStartAppTrial ? 'text' : 'radio'} accessibilityState={canStartAppTrial ? undefined : { selected: selected === pkg.identifier }} accessibilityLabel={`${planTitle(pkg)}, ${freeTrials[pkg.identifier] ? `${trialPeriodLabel(freeTrials[pkg.identifier])} free, then ` : ''}${pkg.product.priceString} per ${periodLabel(pkg)}${pkg.packageType === 'ANNUAL' && savings !== null ? `, save ${savings} percent compared with monthly` : ''}`} onPress={() => setSelected(pkg.identifier)} style={[styles.plan, !canStartAppTrial && selected === pkg.identifier && styles.planSelected]}>
+              {!canStartAppTrial && <View style={[styles.radio, selected === pkg.identifier && styles.radioSelected]}>{selected === pkg.identifier && <View style={styles.radioCenter} />}</View>}
+              <View style={{ flex: 1 }}><View style={styles.planHeading}><Text style={styles.planTitle}>{planTitle(pkg)}</Text>{pkg.packageType === 'ANNUAL' && savings !== null && <Text style={styles.savings}>SAVE {savings}% VS MONTHLY</Text>}</View><Text style={styles.planCaption}>{freeTrials[pkg.identifier] ? `Free for ${trialPeriodLabel(freeTrials[pkg.identifier])}, then ${pkg.product.priceString} per ${periodLabel(pkg)}` : `Billed ${pkg.product.priceString} per ${periodLabel(pkg)}`}</Text></View>
               <Text style={styles.price}>{pkg.product.priceString}</Text>
             </Pressable>
           ))}
-          {(error || accessError) && <Text style={styles.error}>{error || accessError}</Text>}
+          {(error || accessError || (!canStartAppTrial && storeError)) && <Text accessibilityRole="alert" style={styles.error}>{error || accessError || storeError}</Text>}
           {switchAccountError && <Text accessibilityRole="alert" style={styles.error}>{switchAccountError}</Text>}
-          {error && <Pressable onPress={load} style={styles.retry}><Text style={styles.retryText}>Reload plans</Text></Pressable>}
+          {(error || storeError) && <Pressable onPress={load} style={styles.retry}><Text style={styles.retryText}>Reload access and plans</Text></Pressable>}
           <Text style={styles.sectionLabel}>WHAT OPENS WHEN YOU JOIN</Text>
           {([
             ['sunny-outline', 'A guide for every step', 'Open your morning or evening ritual and mark each step done.'],
@@ -188,10 +250,10 @@ export default function PaywallScreen() {
         </View>
       </ScrollView>
       <View style={[styles.purchaseDock, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-        <Pressable disabled={!plan || busy || loading} onPress={purchase} accessibilityRole="button" style={[styles.cta, (!plan || busy || loading) && { opacity: 0.55 }]}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{plan ? `Join for ${plan.product.priceString} / ${periodLabel(plan)}` : 'Choose a membership'}</Text>}
+        <Pressable disabled={busy || loading || (!canStartAppTrial && (!plan || storeLoading))} onPress={canStartAppTrial ? startFreeAccess : purchase} accessibilityRole="button" style={[styles.cta, (busy || loading || (!canStartAppTrial && (!plan || storeLoading))) && { opacity: 0.55 }]}>
+          {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{canStartAppTrial ? 'Start my 10 days free' : plan ? selectedTrial ? 'Start my store trial' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}` : 'Choose a membership'}</Text>}
         </Pressable>
-        {plan && <Text style={styles.terms}>Renews at {plan.product.priceString} per {periodLabel(plan)} unless cancelled. The store confirms the final charge before purchase. Cancel in store settings.</Text>}
+        {canStartAppTrial ? <Text style={styles.terms}>Ten days of free app access. No payment or automatic charge. When it ends, a store subscription is required to continue.</Text> : plan && <Text style={styles.terms}>{selectedTrial ? `Free for ${selectedTrial}, then ${plan.product.priceString} per ${periodLabel(plan)}. Cancel before the store trial ends to avoid a charge. ` : `${plan.product.priceString} per ${periodLabel(plan)}. `}The subscription renews automatically until cancelled in store settings. The store confirms the offer before purchase.</Text>}
         <Pressable onPress={restore} disabled={busy} accessibilityRole="button" style={styles.restore}><Text style={styles.restoreText}>Restore purchases</Text></Pressable>
       </View>
       <EditorialStatusBackdrop />
@@ -212,7 +274,7 @@ const styles = StyleSheet.create({
   radioSelected: { borderColor: colors.primary }, radioCenter: { height: 11, width: 11, borderRadius: 6, backgroundColor: colors.primary }, planTitle: { color: colors.textPrimary, fontWeight: '700', fontSize: 14 },
   planHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }, savings: { color: 'white', backgroundColor: colors.primary, fontSize: 9, fontWeight: '800', overflow: 'hidden', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
   planCaption: { color: colors.textSecondary, fontSize: 11, marginTop: 3 }, price: { color: colors.primary, fontWeight: '800', fontSize: 17 }, purchaseDock: { backgroundColor: '#FCFBF8', borderTopWidth: 1, borderColor: colors.border, paddingHorizontal: 20, paddingTop: 10 }, cta: { backgroundColor: colors.primary, borderRadius: 16, minHeight: 54, justifyContent: 'center', alignItems: 'center' },
-  ctaText: { color: 'white', fontSize: 15, fontWeight: '700' }, terms: { color: colors.textSecondary, fontSize: 10, lineHeight: 14, textAlign: 'center', marginTop: 8 }, restore: { alignItems: 'center', paddingTop: 8, paddingBottom: 2 },
+  ctaText: { color: 'white', fontSize: 15, fontWeight: '700' }, terms: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 8 }, restore: { alignItems: 'center', paddingTop: 8, paddingBottom: 2 },
   restoreText: { color: colors.primary, fontSize: 13, fontWeight: '700' }, error: { color: '#A64032', fontSize: 12, lineHeight: 18, marginTop: 8, textAlign: 'center' }, retry: { alignItems: 'center', padding: 9 },
   retryText: { color: colors.primary, fontWeight: '700' }, footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 9, marginTop: 4 }, footerLink: { color: colors.textSecondary, fontSize: 12, textDecorationLine: 'underline' },
   dot: { color: colors.textTertiary }, account: { textAlign: 'center', fontSize: 11, color: colors.textTertiary, marginTop: 12 },
@@ -223,5 +285,9 @@ const styles = StyleSheet.create({
   planPreviewRow: { flexDirection: 'row', gap: 9, marginTop: 17 }, planPreview: { flex: 1, minHeight: 100, borderRadius: 13, backgroundColor: '#EFF2EC', padding: 12 }, planPreviewLabel: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.2, fontWeight: '800', marginTop: 7 }, planPreviewText: { color: colors.primary, fontSize: 12, lineHeight: 17, marginTop: 5 }, weekPromise: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 15 }, weekPromiseText: { flex: 1, color: colors.primary, fontSize: 12, fontWeight: '700', lineHeight: 17 },
   yourPlanHabit: { color: colors.primary, fontSize: 12, lineHeight: 18, marginTop: 10 },
   yourPlanTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 15 },
-  yourPlanTag: { color: colors.primary, fontWeight: '800', fontSize: 9, letterSpacing: 0.8, backgroundColor: 'white', overflow: 'hidden', borderRadius: 8, padding: 8 }
+  yourPlanTag: { color: colors.primary, fontWeight: '800', fontSize: 9, letterSpacing: 0.8, backgroundColor: 'white', overflow: 'hidden', borderRadius: 8, padding: 8 },
+  freeAccessCard: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#D8DBCF', paddingVertical: 20, marginBottom: 24 },
+  freeAccessEyebrow: { color: colors.goldDark, fontSize: 10, fontWeight: '800', letterSpacing: 1.7 },
+  freeAccessTitle: { color: colors.primary, fontSize: 24, lineHeight: 29, fontWeight: '700', marginTop: 7 },
+  freeAccessCopy: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 7 }
 });

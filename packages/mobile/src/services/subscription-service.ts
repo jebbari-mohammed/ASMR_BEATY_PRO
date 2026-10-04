@@ -4,8 +4,28 @@ import Purchases from 'react-native-purchases';
 import type { PurchasesPackage } from 'react-native-purchases';
 import auth from '@react-native-firebase/auth';
 import functions from '@react-native-firebase/functions';
+import { trialPeriod, trialPeriodLabel } from './store-trial-offer';
 
 const ENTITLEMENT_KEY = 'asmr_user_subscription_entitlement_v1';
+
+export type FreeTrialStatus = {
+  eligible: boolean;
+  active: boolean;
+  endsAt: string | null;
+};
+
+export type VerifiedAccess = { active: boolean; expiresAtMs: number | null; source: string | null };
+
+function isFreeTrialStatus(value: unknown): value is FreeTrialStatus {
+  if (!value || typeof value !== 'object') return false;
+  const status = value as Partial<FreeTrialStatus>;
+  if (typeof status.eligible !== 'boolean' || typeof status.active !== 'boolean' ||
+      !(status.endsAt === null || (typeof status.endsAt === 'string' &&
+        Number.isFinite(Date.parse(status.endsAt))))) return false;
+  if (status.eligible && (status.active || status.endsAt !== null)) return false;
+  if (status.active && status.endsAt === null) return false;
+  return true;
+}
 
 // Production RevenueCat API Keys (set via environment variables)
 export const REVENUECAT_CONFIG = {
@@ -27,6 +47,10 @@ export class SubscriptionService {
   static isPurchaseReady(): boolean {
     return this.isStoreConfigured() && this.identifiedUid !== null &&
       auth().currentUser?.uid === this.identifiedUid && auth().currentUser?.emailVerified === true;
+  }
+
+  private static isVerifiedAccount(): boolean {
+    return !!auth().currentUser?.uid && auth().currentUser?.emailVerified === true;
   }
 
   /**
@@ -62,16 +86,26 @@ export class SubscriptionService {
    * Reads the active store entitlement for display. The backend must independently
    * verify entitlement before any paid server operation.
    */
-  static async hasActiveEntitlement(): Promise<boolean> {
-    if (!this.isPurchaseReady()) {
+  static async verifyAccess(purchaseOnly = false): Promise<VerifiedAccess> {
+    if (!this.isVerifiedAccount() || (purchaseOnly && !this.isPurchaseReady())) {
       if (auth().currentUser?.emailVerified) {
         throw new Error('Membership verification is temporarily unavailable. Please try again.');
       }
-      return false;
+      return { active: false, expiresAtMs: null, source: null };
     }
     try {
-      const result = await functions().httpsCallable('verifySubscriptionAccess')();
-      return (result.data as { isPro?: boolean }).isPro === true;
+      const result = await functions().httpsCallable('verifySubscriptionAccess')(
+        purchaseOnly ? { purchaseOnly: true } : {}
+      );
+      const access = result.data as { isPro?: boolean; source?: string; expiresAtMs?: number | null };
+      const active = access.isPro === true &&
+        (!purchaseOnly || (access.source !== 'store_review' && access.source !== 'app_trial'));
+      return {
+        active,
+        expiresAtMs: active && typeof access.expiresAtMs === 'number' &&
+          Number.isFinite(access.expiresAtMs) ? access.expiresAtMs : null,
+        source: active && typeof access.source === 'string' ? access.source : null
+      };
     } catch (rcErr) {
       console.warn('[RevenueCat] CustomerInfo check warning:', rcErr);
       if ((rcErr as { code?: string })?.code === 'functions/resource-exhausted') {
@@ -79,6 +113,27 @@ export class SubscriptionService {
       }
       throw new Error('Membership verification is temporarily unavailable. Please try again.');
     }
+  }
+
+  static async hasActiveEntitlement(purchaseOnly = false): Promise<boolean> {
+    return (await this.verifyAccess(purchaseOnly)).active;
+  }
+
+  /** Free app access is issued by the backend and never starts a store purchase. */
+  static async getFreeTrialStatus(): Promise<FreeTrialStatus> {
+    if (!this.isVerifiedAccount()) throw new Error('Verify your email before starting free access.');
+    const result = await functions().httpsCallable('getFreeTrialStatus')({});
+    if (!isFreeTrialStatus(result.data)) throw new Error('Free access is temporarily unavailable.');
+    return result.data;
+  }
+
+  static async startFreeTrial(): Promise<FreeTrialStatus> {
+    if (!this.isVerifiedAccount()) throw new Error('Verify your email before starting free access.');
+    const result = await functions().httpsCallable('startFreeTrial')({});
+    if (!isFreeTrialStatus(result.data) || !result.data.active) {
+      throw new Error('Could not start free access. Please try again.');
+    }
+    return result.data;
   }
 
   /**
@@ -102,7 +157,7 @@ export class SubscriptionService {
       }
 
       await Purchases.purchasePackage(currentPackage);
-      const isPro = await this.hasActiveEntitlement();
+      const isPro = await this.hasActiveEntitlement(true);
       if (!isPro) {
         throw new Error('The purchase completed, but Pro is not active yet. Please restore purchases.');
       }
@@ -122,7 +177,7 @@ export class SubscriptionService {
   static async restorePurchases(): Promise<boolean> {
     if (!this.isPurchaseReady()) return false;
     await Purchases.restorePurchases();
-    return this.hasActiveEntitlement();
+    return this.hasActiveEntitlement(true);
   }
 
   static async getStorePackages(): Promise<PurchasesPackage[]> {
@@ -131,6 +186,35 @@ export class SubscriptionService {
     return (offerings.current?.availablePackages ?? []).filter(
       (pkg) => pkg.packageType === 'ANNUAL' || pkg.packageType === 'MONTHLY'
     );
+  }
+
+  /** Returns only free periods this store account can actually redeem. */
+  static async getFreeTrialPeriods(packages: PurchasesPackage[]): Promise<Record<string, string>> {
+    if (!this.isPurchaseReady()) return {};
+    const freePeriods: Record<string, string> = {};
+    if (Platform.OS === 'ios') {
+      const products = packages.filter(pkg => pkg.product.introPrice?.price === 0);
+      if (!products.length) return freePeriods;
+      try {
+        const eligibility = await Purchases.checkTrialOrIntroductoryPriceEligibility(
+          products.map(pkg => pkg.product.identifier)
+        );
+        for (const pkg of products) {
+          const eligible = eligibility[pkg.product.identifier]?.status ===
+            Purchases.INTRO_ELIGIBILITY_STATUS.INTRO_ELIGIBILITY_STATUS_ELIGIBLE;
+          const period = trialPeriod(pkg.product, 'ios', eligible);
+          if (trialPeriodLabel(period)) freePeriods[pkg.identifier] = period!;
+        }
+      } catch {
+        // Unknown eligibility must never turn into a trial promise.
+      }
+    } else if (Platform.OS === 'android') {
+      for (const pkg of packages) {
+        const period = trialPeriod(pkg.product, 'android');
+        if (trialPeriodLabel(period)) freePeriods[pkg.identifier] = period!;
+      }
+    }
+    return freePeriods;
   }
 
   static async forgetIdentity(): Promise<void> {

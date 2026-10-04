@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, ImageBackground, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -13,7 +13,9 @@ import { EditorialStatusBackdrop } from '../../src/components/EditorialStatusBac
 
 type Choice = { value: string; label: string; detail?: string; icon: keyof typeof Ionicons.glyphMap };
 type Question = { eyebrow: string; title: string; copy: string; field: keyof OnboardingStateV1; choices: Choice[] };
-const flow: OnboardingStep[] = ['WELCOME', 'GOALS', 'SKIN_FEEL', 'SENSITIVITY', 'EXISTING_ROUTINE', 'TIME_COMMITMENT', 'SUNSCREEN_HABIT', 'PRIMARY_MOTIVATION', 'PLAN_GENERATION', 'AGE_GATE'];
+// Ask only what changes the starter routine. The plan is the reward for four choices.
+const flow: OnboardingStep[] = ['WELCOME', 'GOALS', 'SKIN_FEEL', 'SENSITIVITY', 'TIME_COMMITMENT', 'PLAN_GENERATION'];
+const questionCount = 4;
 
 const questions: Partial<Record<OnboardingStep, Question>> = {
   GOALS: { eyebrow: 'YOUR INTENTION', title: 'What matters to you?', copy: 'Choose up to two. A good ritual starts with what you care about, not a camera score.', field: 'selectedGoals', choices: [
@@ -34,26 +36,10 @@ const questions: Partial<Record<OnboardingStep, Question>> = {
     { value: 'sometimes', label: 'Sometimes', icon: 'water-outline' }, { value: 'often', label: 'Often', icon: 'alert-circle-outline' },
     { value: 'very_easily', label: 'Very easily', icon: 'heart-outline' }, { value: 'unsure', label: 'I’m not sure', icon: 'help-circle-outline' }
   ] },
-  EXISTING_ROUTINE: { eyebrow: 'NO PERFECT START REQUIRED', title: 'Where are you starting?', copy: 'A useful plan should fit your life as it is.', field: 'existingRoutineTier', choices: [
-    { value: 'nothing_yet', label: 'Starting from zero', icon: 'ellipse-outline' }, { value: 'simple', label: 'A few steps sometimes', icon: 'sunny-outline' },
-    { value: 'regular', label: 'I have a regular routine', icon: 'calendar-outline' }, { value: 'advanced', label: 'I use many products', icon: 'layers-outline' }
-  ] },
   TIME_COMMITMENT: { eyebrow: 'MAKE IT DOABLE', title: 'How much time feels realistic?', copy: 'We’ll start with a ritual you can actually repeat.', field: 'timeCommitment', choices: [
     { value: 'about_2_minutes', label: 'About 2 minutes', detail: 'The essential steps', icon: 'flash-outline' },
     { value: 'about_5_minutes', label: 'About 5 minutes', detail: 'A little room to breathe', icon: 'time-outline' },
     { value: 'ten_plus_minutes', label: '10 minutes or more', detail: 'A slower moment of care', icon: 'hourglass-outline' }
-  ] },
-  SUNSCREEN_HABIT: { eyebrow: 'YOUR DAYTIME HABIT', title: 'How often do you use sunscreen?', copy: 'No judgment. We’ll put sun protection in your morning plan either way.', field: 'sunscreenHabit', choices: [
-    { value: 'every_day', label: 'Every day', icon: 'sunny-outline' }, { value: 'most_days', label: 'Most days', icon: 'partly-sunny-outline' },
-    { value: 'mostly_sunny_days', label: 'Mostly on sunny days', icon: 'cloudy-outline' }, { value: 'rarely', label: 'Rarely', icon: 'moon-outline' },
-    { value: 'never', label: 'Not yet', icon: 'add-circle-outline' }, { value: 'unsure', label: 'I’m not sure', icon: 'help-circle-outline' }
-  ] },
-  PRIMARY_MOTIVATION: { eyebrow: 'THE REASON TO RETURN', title: 'What would make this stick?', copy: 'Imagine a week of small moments that belong to you.', field: 'primaryMotivation', choices: [
-    { value: 'keep_it_simple', label: 'A routine I can keep', icon: 'checkmark-circle-outline' },
-    { value: 'see_visible_progress', label: 'A record of my progress', icon: 'calendar-outline' },
-    { value: 'understand_my_skin', label: 'Understand what I notice', icon: 'book-outline' },
-    { value: 'find_right_products', label: 'Organize what I own', icon: 'cube-outline' },
-    { value: 'all_of_the_above', label: 'All of these', icon: 'sparkles-outline' }
   ] }
 };
 
@@ -66,6 +52,7 @@ function hasAnswer(state: OnboardingStateV1, step: OnboardingStep): boolean {
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const [answers, setAnswers] = useState<OnboardingStateV1>(INITIAL_ONBOARDING_STATE);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -80,7 +67,16 @@ export default function OnboardingScreen() {
   useEffect(() => {
     let active = true;
     OnboardingService.loadState().then(saved => {
-      if (active) { setAnswers({ ...saved, currentStep: flow.includes(saved.currentStep) ? saved.currentStep : 'WELCOME' }); setReady(true); }
+      if (active) {
+        // Resume people partway through the former seven-question flow at the
+        // last answer that still changes the plan.
+        const currentStep = flow.includes(saved.currentStep) ? saved.currentStep
+          : saved.currentStep === 'AGE_GATE' ? 'PLAN_GENERATION'
+            : ['EXISTING_ROUTINE', 'SUNSCREEN_HABIT', 'PRIMARY_MOTIVATION'].includes(saved.currentStep) ? 'TIME_COMMITMENT'
+            : 'WELCOME';
+        setAnswers({ ...saved, currentStep });
+        setReady(true);
+      }
     });
     return () => { active = false; };
   }, []);
@@ -118,7 +114,7 @@ export default function OnboardingScreen() {
   }
 
   async function finish() {
-    if (!answers.isAdult18Plus || busy) return;
+    if (busy) return;
     setBusy(true);
     try {
       await OnboardingService.saveState({ ...answers, currentStep: 'COMPLETED', completedAt: new Date().toISOString() });
@@ -137,10 +133,10 @@ export default function OnboardingScreen() {
 
   if (!ready) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>;
 
-  return <View style={[styles.screen, { paddingBottom: insets.bottom }]}>
+  return <View style={[styles.screen, { paddingBottom: question || step === 'PLAN_GENERATION' ? 0 : insets.bottom }]}>
     <ScrollView key={step} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
       {step === 'WELCOME' ? <>
-        <ImageBackground source={localImages.onboardingBotanical} style={[styles.welcomeHero, { paddingTop: insets.top }]} resizeMode="cover">
+        <ImageBackground source={localImages.onboardingBotanical} style={[styles.welcomeHero, { height: Math.max(300, Math.min(410, windowHeight * 0.47)), paddingTop: insets.top }]} resizeMode="cover">
           <LinearGradient colors={['rgba(19,38,28,0.78)', 'rgba(19,38,28,0.05)', 'rgba(19,38,28,0.05)']} style={styles.welcomeShade}>
             <Text style={styles.heroBrand}>ASMR BEAUTY</Text><Text style={styles.heroTitle}>A ritual that feels like yours.</Text>
             <Text style={styles.heroSubtitle}>Shape a gentle morning and evening plan around your real life.</Text>
@@ -148,17 +144,17 @@ export default function OnboardingScreen() {
         </ImageBackground>
         <View style={styles.body}>
           <Text style={styles.eyebrow}>YOUR SPACE TO BEGIN</Text>
-          <Text style={styles.intro}>A few thoughtful choices. A useful ritual. No selfie, diagnosis, or perfect skin required.</Text>
+          <Text style={styles.intro}>Four choices. A morning and evening plan made for your skin and your day.</Text>
           <View style={styles.promiseRow}><Ionicons name="sparkles-outline" size={20} color={colors.goldDark} /><Text style={styles.promiseText}>See your own starter plan before deciding to join.</Text></View>
           <Pressable accessibilityRole="button" onPress={() => void go(1)} style={styles.cta}><Text style={styles.ctaText}>Build my ritual</Text><Ionicons name="arrow-forward" size={19} color="white" /></Pressable>
           <Pressable accessibilityRole="button" onPress={() => void existingAccount()} style={styles.secondary}><Text style={styles.secondaryText}>Already have an account? Sign in</Text></Pressable>
-          <Text style={styles.finePrint}>Membership is required to use the app after this preview. Store prices appear before purchase.</Text>
+          <Text style={styles.finePrint}>You’ll see your plan before joining. Membership terms and store prices appear before purchase.</Text>
         </View>
       </> : <>
-        <View style={[styles.top, { height: insets.top + 60, paddingTop: insets.top }]}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => void go(-1)} style={styles.back}><Ionicons name="arrow-back" size={21} color={colors.primary} /></Pressable><Text style={styles.progressLabel}>{index} OF {flow.length - 1}</Text><Text style={styles.topBrand}>ASMR BEAUTY</Text></View>
-        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.round(index / (flow.length - 1) * 100)}%` }]} /></View>
+        <View style={[styles.top, { height: insets.top + 60, paddingTop: insets.top }]}><Pressable accessibilityRole="button" accessibilityLabel="Go back" onPress={() => void go(-1)} style={styles.back}><Ionicons name="arrow-back" size={21} color={colors.primary} /></Pressable><Text style={styles.progressLabel}>{question ? `${index} OF ${questionCount}` : 'YOUR PLAN'}</Text><Text style={styles.topBrand}>ASMR BEAUTY</Text></View>
+        <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.round(Math.min(index, questionCount) / questionCount * 100)}%` }]} /></View>
         {step === 'PLAN_GENERATION' ? <>
-          <ImageBackground source={localImages.onboardingBotanical} style={styles.planHero} imageStyle={styles.planHeroImage}><LinearGradient colors={['rgba(18,40,28,0.06)', 'rgba(18,40,28,0.88)']} style={styles.planShade}><Text style={styles.planHeroLabel}>A RITUAL WITH YOUR NAME ON IT</Text><Text style={styles.planHeroTitle}>{plan.ritualName}</Text></LinearGradient></ImageBackground>
+          <ImageBackground source={localImages.onboardingBotanical} style={styles.planHero} imageStyle={styles.planHeroImage}><LinearGradient colors={['rgba(18,40,28,0.06)', 'rgba(18,40,28,0.88)']} style={styles.planShade}><Text style={styles.planHeroLabel}>A RITUAL SHAPED BY YOUR ANSWERS</Text><Text style={styles.planHeroTitle}>{plan.ritualName}</Text></LinearGradient></ImageBackground>
           <View style={styles.body}>
             <Text style={styles.planIntro}>{plan.headline}</Text>
             <Text style={styles.personalInsight}>{plan.personalInsight}</Text>
@@ -180,17 +176,8 @@ export default function OnboardingScreen() {
             </View>)}
             <View style={styles.caution}><Ionicons name="heart-outline" size={20} color={colors.primary} /><Text style={styles.cautionText}>{plan.caution}</Text></View>
             <Text style={styles.planFoot}>This plan uses only your answers. It is cosmetic self-care guidance, not a diagnosis or a promise of skin results.</Text>
-            <Pressable accessibilityRole="button" onPress={() => void go(1)} style={styles.cta}><Text style={styles.ctaText}>Keep my ritual</Text><Ionicons name="arrow-forward" size={19} color="white" /></Pressable>
           </View>
-        </> : step === 'AGE_GATE' ? <View style={styles.body}>
-          <ImageBackground source={localImages.editorialRoutine} style={styles.smallHero} imageStyle={styles.smallHeroImage} />
-          <Text style={styles.eyebrow}>A PRIVATE, QUIET SPACE</Text><Text style={styles.title}>Now make it yours.</Text>
-          <Text style={styles.copy}>Your ritual can be edited to match the products you own. After joining, you can check off steps, see your consistency, and choose gentle reminders.</Text>
-          <View style={styles.weekCard}><Text style={styles.weekLabel}>WHAT YOU GET WITH MEMBERSHIP</Text><Text style={styles.weekLine}>A guided {plan.steps.length}-step ritual you can edit</Text><Text style={styles.weekLine}>A calendar of the days you return</Text><Text style={styles.weekLine}>A private shelf for products you own</Text><Text style={styles.weekPrompt}>Your seven-day starting path stays with your plan.</Text></View>
-          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: !!answers.isAdult18Plus }} onPress={() => saveChoice({ ...answers, isAdult18Plus: !answers.isAdult18Plus })} style={styles.ageRow}><Ionicons name={answers.isAdult18Plus ? 'checkbox' : 'square-outline'} size={25} color={colors.primary} /><Text style={styles.ageText}>I am 18 or older and understand this app is for cosmetic self-care, not medical advice.</Text></Pressable>
-          <Pressable accessibilityRole="button" disabled={!answers.isAdult18Plus || busy} onPress={() => void finish()} style={[styles.cta, (!answers.isAdult18Plus || busy) && styles.disabled]}>{busy ? <ActivityIndicator color="white" /> : <><Text style={styles.ctaText}>Save my plan and continue</Text><Ionicons name="arrow-forward" size={19} color="white" /></>}</Pressable>
-          <View style={styles.links}><Pressable onPress={() => router.push('/legal/privacy')}><Text style={styles.link}>Privacy</Text></Pressable><Text style={styles.link}>·</Text><Pressable onPress={() => router.push('/legal/terms')}><Text style={styles.link}>Terms</Text></Pressable></View>
-        </View> : question ? <View style={styles.body}>
+        </> : question ? <View style={styles.body}>
           <ImageBackground source={index % 2 ? localImages.editorialRoutine : localImages.onboardingBotanical} style={styles.smallHero} imageStyle={styles.smallHeroImage} />
           <Text style={styles.eyebrow}>{question.eyebrow}</Text><Text style={styles.title}>{question.title}</Text><Text style={styles.copy}>{question.copy}</Text>
           <View style={styles.options}>{question.choices.map(choice => {
@@ -199,12 +186,12 @@ export default function OnboardingScreen() {
               <View style={[styles.optionIcon, selected && styles.optionIconSelected]}><Ionicons name={choice.icon} size={21} color={selected ? colors.primary : colors.goldDark} /></View><View style={styles.optionText}><Text style={styles.optionLabel}>{choice.label}</Text>{choice.detail && <Text style={styles.optionDetail}>{choice.detail}</Text>}</View><Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={23} color={selected ? colors.primary : colors.border} />
             </Pressable>;
           })}</View>
-          {index >= 4 && <View style={styles.takingShape}><Ionicons name="sparkles-outline" size={19} color={colors.goldDark} /><Text style={styles.takingShapeText}>Your ritual is taking shape. You’ll see your own plan before creating an account.</Text></View>}
-          <Pressable accessibilityRole="button" disabled={!hasAnswer(answers, step) || busy} onPress={() => void go(1)} style={[styles.cta, (!hasAnswer(answers, step) || busy) && styles.disabled]}><Text style={styles.ctaText}>Continue</Text><Ionicons name="arrow-forward" size={19} color="white" /></Pressable>
-          <Text style={styles.finePrint}>You can go back and change any answer.</Text>
         </View> : null}
       </>}
-    </ScrollView><EditorialStatusBackdrop />
+    </ScrollView>
+    {question && <View style={[styles.planDock, { paddingBottom: Math.max(insets.bottom, 12) }]}><Pressable accessibilityRole="button" disabled={!hasAnswer(answers, step) || busy} onPress={() => void go(1)} style={[styles.planDockButton, (!hasAnswer(answers, step) || busy) && styles.disabled]}>{busy ? <ActivityIndicator color="white" /> : <><Text style={styles.ctaText}>{index === questionCount ? 'See my plan' : 'Continue'}</Text><Ionicons name="arrow-forward" size={19} color="white" /></>}</Pressable></View>}
+    {step === 'PLAN_GENERATION' && <View style={[styles.planDock, { paddingBottom: Math.max(insets.bottom, 12) }]}><Pressable accessibilityRole="button" disabled={busy} onPress={() => void finish()} style={[styles.planDockButton, busy && styles.disabled]}>{busy ? <ActivityIndicator color="white" /> : <><Text style={styles.ctaText}>Save my ritual</Text><Ionicons name="arrow-forward" size={19} color="white" /></>}</Pressable></View>}
+    <EditorialStatusBackdrop />
     <Modal visible={previewIndex !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setPreviewIndex(null)}>
       <View style={[styles.previewScreen, { paddingBottom: insets.bottom }]}>
         <ImageBackground source={localImages.editorialRoutine} style={styles.previewHero} resizeMode="cover">
@@ -231,15 +218,15 @@ export default function OnboardingScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background }, loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }, content: { paddingBottom: 36 },
-  welcomeHero: { height: 470 }, welcomeShade: { flex: 1, padding: 28, paddingTop: 75 }, heroBrand: { color: '#F9E8D0', fontSize: 11, letterSpacing: 2.4, fontWeight: '800' }, heroTitle: { color: 'white', fontSize: 39, lineHeight: 43, fontWeight: '700', marginTop: 26, maxWidth: 310 }, heroSubtitle: { color: '#FAF5EA', fontSize: 15, lineHeight: 23, marginTop: 11, maxWidth: 280 },
+  welcomeHero: { height: 410 }, welcomeShade: { flex: 1, padding: 28, paddingTop: 60 }, heroBrand: { color: '#F9E8D0', fontSize: 11, letterSpacing: 2.4, fontWeight: '800' }, heroTitle: { color: 'white', fontSize: 39, lineHeight: 43, fontWeight: '700', marginTop: 26, maxWidth: 310 }, heroSubtitle: { color: '#FAF5EA', fontSize: 15, lineHeight: 23, marginTop: 11, maxWidth: 280 },
   body: { paddingHorizontal: 24, paddingTop: 23 }, eyebrow: { color: colors.goldDark, fontSize: 10, fontWeight: '800', letterSpacing: 1.8, marginTop: 6 }, intro: { fontSize: 19, lineHeight: 28, color: colors.primary, fontWeight: '600', marginTop: 13 }, promiseRow: { flexDirection: 'row', alignItems: 'center', gap: 11, marginTop: 24, padding: 17, backgroundColor: '#F1EFE9', borderRadius: 15 }, promiseText: { flex: 1, color: colors.primary, fontSize: 13, lineHeight: 19, fontWeight: '600' },
   top: { height: 72, paddingHorizontal: 24, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, back: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primarySoft }, progressLabel: { color: colors.goldDark, fontSize: 11, fontWeight: '800', letterSpacing: 1.5 }, topBrand: { color: colors.primary, fontSize: 10, fontWeight: '800', letterSpacing: 1.4 }, progressTrack: { height: 3, backgroundColor: '#E7E3DA', marginHorizontal: 24, marginTop: 8, borderRadius: 2 }, progressFill: { height: 3, borderRadius: 2, backgroundColor: colors.goldDark },
-  smallHero: { height: 145, borderRadius: 20, overflow: 'hidden', marginBottom: 27 }, smallHeroImage: { borderRadius: 20 }, title: { color: colors.primary, fontSize: 33, lineHeight: 38, fontWeight: '700', marginTop: 9, maxWidth: 340 }, copy: { color: colors.textSecondary, fontSize: 15, lineHeight: 23, marginTop: 13 }, options: { marginTop: 25, gap: 9 }, option: { minHeight: 64, borderRadius: 17, borderWidth: 1, borderColor: colors.border, backgroundColor: 'white', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, optionSelected: { borderColor: colors.primary, backgroundColor: '#F3F7F3', borderWidth: 1.5 }, optionIcon: { width: 39, height: 39, borderRadius: 13, backgroundColor: '#FAF2E8', alignItems: 'center', justifyContent: 'center' }, optionIconSelected: { backgroundColor: '#E1ECE3' }, optionText: { flex: 1 }, optionLabel: { color: colors.primary, fontSize: 15, fontWeight: '700' }, optionDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 3 }, takingShape: { flexDirection: 'row', gap: 10, marginTop: 22, padding: 16, backgroundColor: '#F5EFE6', borderRadius: 14, alignItems: 'center' }, takingShapeText: { flex: 1, color: colors.textSecondary, fontSize: 12, lineHeight: 18 },
+  smallHero: { height: 145, borderRadius: 20, overflow: 'hidden', marginBottom: 27 }, smallHeroImage: { borderRadius: 20 }, title: { color: colors.primary, fontSize: 33, lineHeight: 38, fontWeight: '700', marginTop: 9, maxWidth: 340 }, copy: { color: colors.textSecondary, fontSize: 15, lineHeight: 23, marginTop: 13 }, options: { marginTop: 25, gap: 9 }, option: { minHeight: 64, borderRadius: 17, borderWidth: 1, borderColor: colors.border, backgroundColor: 'white', padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, optionSelected: { borderColor: colors.primary, backgroundColor: '#F3F7F3', borderWidth: 1.5 }, optionIcon: { width: 39, height: 39, borderRadius: 13, backgroundColor: '#FAF2E8', alignItems: 'center', justifyContent: 'center' }, optionIconSelected: { backgroundColor: '#E1ECE3' }, optionText: { flex: 1 }, optionLabel: { color: colors.primary, fontSize: 15, fontWeight: '700' }, optionDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 3 },
   cta: { marginTop: 25, minHeight: 58, borderRadius: 17, backgroundColor: colors.primary, flexDirection: 'row', gap: 11, justifyContent: 'center', alignItems: 'center' }, ctaText: { color: 'white', fontSize: 15, fontWeight: '700' }, disabled: { opacity: 0.45 }, secondary: { alignItems: 'center', padding: 16 }, secondaryText: { color: colors.primary, fontSize: 13, fontWeight: '700' }, finePrint: { textAlign: 'center', color: colors.textSecondary, fontSize: 11, lineHeight: 17, marginTop: 16 },
+  planDock: { backgroundColor: '#FCFBF8', borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 24, paddingTop: 10 }, planDockButton: { minHeight: 56, borderRadius: 17, backgroundColor: colors.primary, flexDirection: 'row', gap: 11, justifyContent: 'center', alignItems: 'center' },
   planHero: { height: 270, marginHorizontal: 24, marginTop: 24, borderRadius: 20, overflow: 'hidden', justifyContent: 'flex-end' }, planHeroImage: { borderRadius: 20 }, planShade: { flex: 1, justifyContent: 'flex-end', padding: 22 }, planHeroLabel: { color: '#F7E3C5', fontWeight: '800', fontSize: 10, letterSpacing: 1.7 }, planHeroTitle: { color: 'white', fontSize: 32, lineHeight: 37, fontWeight: '700', marginTop: 7 }, planIntro: { color: colors.primary, fontSize: 21, lineHeight: 27, fontWeight: '700' }, personalInsight: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, marginTop: 9 }, planSummary: { flexDirection: 'row', alignItems: 'center', gap: 13, borderRadius: 17, backgroundColor: '#F1EFE9', padding: 17, marginTop: 20 }, summaryNumber: { color: colors.goldDark, fontSize: 32, fontWeight: '700' }, summaryCopy: { flex: 1, color: colors.primary, fontSize: 13, fontWeight: '700', lineHeight: 20 }, ritualCard: { backgroundColor: 'white', borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 18, marginTop: 14 }, ritualHead: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 14 }, ritualTitle: { color: colors.primary, fontSize: 18, fontWeight: '700' }, ritualStep: { flexDirection: 'row', gap: 13, paddingVertical: 10, borderTopWidth: 1, borderTopColor: colors.borderLight }, stepNumber: { color: colors.goldDark, fontSize: 13, fontWeight: '800' }, stepText: { flex: 1 }, stepName: { color: colors.primary, fontWeight: '700', fontSize: 14 }, stepDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 }, caution: { flexDirection: 'row', gap: 10, backgroundColor: colors.primarySoft, borderRadius: 15, padding: 16, marginTop: 16 }, cautionText: { flex: 1, color: colors.primary, fontSize: 12, lineHeight: 18 }, planFoot: { color: colors.textSecondary, fontSize: 11, lineHeight: 17, marginTop: 17 },
   journeyHead: { marginTop: 29, marginBottom: 13 }, journeyEyebrow: { color: colors.goldDark, fontSize: 10, fontWeight: '800', letterSpacing: 1.6 }, journeyTitle: { color: colors.primary, fontSize: 23, fontWeight: '700', marginTop: 5 }, journeyRow: { flexDirection: 'row', minHeight: 92 }, journeyRail: { alignItems: 'center', width: 28 }, journeyDot: { width: 13, height: 13, borderRadius: 7, borderWidth: 2, borderColor: colors.goldDark, backgroundColor: colors.background, marginTop: 5 }, journeyDotActive: { backgroundColor: colors.goldDark }, journeyLine: { width: 1.5, flex: 1, backgroundColor: '#D4D0C4', marginVertical: 6 }, journeyCopy: { flex: 1, paddingLeft: 10, paddingBottom: 18 }, journeyDay: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.4, fontWeight: '800' }, journeyMoment: { color: colors.primary, fontSize: 16, fontWeight: '700', marginTop: 3 }, journeyDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 },
   fitCard: { backgroundColor: '#F4F7F2', borderRadius: 17, padding: 17, marginTop: 13 }, fitTitle: { color: colors.goldDark, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginBottom: 12 }, fitRow: { flexDirection: 'row', gap: 9, marginTop: 8, alignItems: 'flex-start' }, fitText: { flex: 1, color: colors.primary, fontSize: 12, lineHeight: 18 },
-  weekCard: { backgroundColor: 'white', borderRadius: 18, borderColor: colors.border, borderWidth: 1, padding: 19, marginTop: 23 }, weekLabel: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.7, fontWeight: '800', marginBottom: 14 }, weekLine: { color: colors.primary, fontSize: 14, lineHeight: 27 }, weekPrompt: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 12 }, ageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 24 }, ageText: { flex: 1, color: colors.textPrimary, fontSize: 13, lineHeight: 20 }, links: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 24 }, link: { color: colors.textSecondary, fontSize: 12, textDecorationLine: 'underline' },
   previewInvite: { marginTop: 14, padding: 17, borderRadius: 18, backgroundColor: '#E9F0E8', flexDirection: 'row', alignItems: 'center', gap: 13 }, previewInviteIcon: { width: 45, height: 45, borderRadius: 15, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }, previewInviteCopy: { flex: 1 }, previewInviteTitle: { color: colors.primary, fontSize: 15, fontWeight: '800' }, previewInviteDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 3 },
   previewScreen: { flex: 1, backgroundColor: colors.background }, previewHero: { height: 280 }, previewShade: { flex: 1, paddingHorizontal: 25, paddingBottom: 28, justifyContent: 'space-between' }, previewClose: { width: 42, height: 42, borderRadius: 21, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center' }, previewHeroEyebrow: { color: '#F8DFC2', fontSize: 11, fontWeight: '800', letterSpacing: 2 }, previewHeroTitle: { color: 'white', fontSize: 34, lineHeight: 39, fontWeight: '700', marginTop: 9, maxWidth: 300 }, previewBodyScroll: { flex: 1 }, previewBody: { flexGrow: 1, paddingHorizontal: 26, paddingTop: 28, paddingBottom: 28 }, previewMeta: { flexDirection: 'row', justifyContent: 'space-between' }, previewStepCount: { color: colors.goldDark, fontSize: 11, fontWeight: '800', letterSpacing: 1.5 }, previewCategory: { color: colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 1.5 }, previewTrack: { height: 5, backgroundColor: '#E3EBE4', borderRadius: 3, marginTop: 20 }, previewFill: { height: 5, borderRadius: 3, backgroundColor: colors.primary }, previewStepTitle: { color: colors.primary, fontSize: 33, lineHeight: 39, fontWeight: '700', marginTop: 28 }, previewStepDetail: { color: colors.textSecondary, fontSize: 17, lineHeight: 26, marginTop: 16 }, previewNote: { flexDirection: 'row', gap: 13, alignItems: 'center', backgroundColor: '#F3EEE5', padding: 16, borderRadius: 16, marginTop: 28 }, previewNoteText: { flex: 1, color: colors.textSecondary, fontSize: 13, lineHeight: 20 }, previewFooter: { borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 24, paddingTop: 17, flexDirection: 'row', gap: 11 }, previewSecondary: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center' }, previewSecondaryText: { color: colors.primary, fontSize: 13, fontWeight: '700' }, previewNext: { flex: 1.2, minHeight: 54, borderRadius: 15, backgroundColor: colors.primary, flexDirection: 'row', gap: 7, alignItems: 'center', justifyContent: 'center' }, previewNextText: { color: 'white', fontSize: 14, fontWeight: '700' }
 });

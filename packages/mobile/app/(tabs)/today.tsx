@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ImageBackground, ActivityIndicator, AppState, Modal, Pressable, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import auth from '@react-native-firebase/auth';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +14,8 @@ import { RoutineLogCorrectionError, RoutineLogService } from '../../src/services
 import { RoutineService, RoutineStep, STARTER_STEPS } from '../../src/services/routine-service';
 import { OnboardingService } from '../../src/services/onboarding-machine';
 import { buildStarterPlan, StarterPlan } from '../../src/services/personalized-starter';
+import { SkinFeel, SkinFeelCheckinService } from '../../src/services/skin-feel-checkin-service';
+import { useAccess } from '../../src/services/access-context';
 
 const localDayKey = () => {
   const date = new Date();
@@ -24,12 +26,22 @@ type DisplayStep = RoutineStep & { completed: boolean };
 type PendingStep = { day: string; completed: boolean; operation: number; settled: boolean };
 type DataIdentity = { uid: string; day: string };
 
+const FEEL_CHOICES: { value: SkinFeel; label: string }[] = [
+  { value: 'comfortable', label: 'Comfortable' },
+  { value: 'dry_tight', label: 'Dry or tight' },
+  { value: 'oily', label: 'Oily' },
+  { value: 'sensitive', label: 'Sensitive' },
+  { value: 'mixed', label: 'A mix' }
+];
+
 function iconFor(category: RoutineStep['category']): keyof typeof Ionicons.glyphMap {
   return ({ Cleanse: 'water-outline', Hydrate: 'sparkles-outline', Treat: 'leaf-outline', Protect: 'shield-checkmark-outline', Other: 'ellipse-outline' } as const)[category];
 }
 
 export default function TodayScreen() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { trialEndsAtMs } = useAccess();
   const { height: windowHeight } = useWindowDimensions();
   const [steps, setSteps] = useState<DisplayStep[]>(STARTER_STEPS.map(step => ({ ...step, completed: false })));
   const [loading, setLoading] = useState(true);
@@ -43,6 +55,12 @@ export default function TodayScreen() {
   const [playerPeriod, setPlayerPeriod] = useState<'morning' | 'evening' | null>(null);
   const [playerIndex, setPlayerIndex] = useState(0);
   const [starterPlan, setStarterPlan] = useState<StarterPlan | null>(null);
+  const [skinFeel, setSkinFeel] = useState<SkinFeel | null>(null);
+  const [checkinIdentity, setCheckinIdentity] = useState<DataIdentity | null>(null);
+  const [checkinLoading, setCheckinLoading] = useState(true);
+  const [checkinSaving, setCheckinSaving] = useState(false);
+  const [checkinPendingWrites, setCheckinPendingWrites] = useState(false);
+  const [checkinError, setCheckinError] = useState<string | null>(null);
   const [authUid, setAuthUid] = useState(auth().currentUser?.uid ?? null);
   const [requestIdentity, setRequestIdentity] = useState<DataIdentity | null>(null);
   const [loadedIdentity, setLoadedIdentity] = useState<DataIdentity | null>(null);
@@ -55,6 +73,7 @@ export default function TodayScreen() {
   const pendingSteps = useRef(new Map<string, PendingStep>());
   const latestIntent = useRef(new Map<string, boolean>());
   const operationId = useRef(0);
+  const checkinOperationId = useRef(0);
   const snapshotHasPendingWrites = useRef(false);
   const mounted = useRef(true);
 
@@ -78,6 +97,13 @@ export default function TodayScreen() {
       setRequestIdentity(null);
       setLoadedIdentity(null);
       setStarterPlan(null);
+      setSkinFeel(null);
+      setCheckinIdentity(null);
+      setCheckinLoading(true);
+      setCheckinSaving(false);
+      setCheckinPendingWrites(false);
+      setCheckinError(null);
+      ++checkinOperationId.current;
       setLoading(true);
       setRefreshing(false);
       setLoadError(null);
@@ -179,6 +205,47 @@ export default function TodayScreen() {
     return () => { active = false; unsubscribe(); };
   }, [applyCurrentLog, authUid, dayRevision, reloadRevision]));
 
+  useFocusEffect(useCallback(() => {
+    const uid = authUid;
+    const day = localDayKey();
+    if (!uid || auth().currentUser?.uid !== uid) return;
+    const epoch = identityEpoch.current;
+    let active = true;
+    let unsubscribe = () => {};
+    const stillCurrent = () => active && identityEpoch.current === epoch && auth().currentUser?.uid === uid && localDayKey() === day;
+    setCheckinLoading(true);
+    setCheckinError(null);
+    setCheckinIdentity(null);
+    setSkinFeel(null);
+    setCheckinSaving(false);
+    setCheckinPendingWrites(false);
+    ++checkinOperationId.current;
+    try {
+      unsubscribe = SkinFeelCheckinService.watchToday(day, uid, ({ checkin, pendingWrites }) => {
+        if (!stillCurrent()) return;
+        setSkinFeel(checkin?.feel ?? null);
+        setCheckinPendingWrites(pendingWrites);
+        setCheckinIdentity({ uid, day });
+        setCheckinLoading(false);
+      }, () => {
+        if (!stillCurrent()) return;
+        setSkinFeel(null);
+        setCheckinIdentity(null);
+        setCheckinPendingWrites(false);
+        setCheckinSaving(false);
+        ++checkinOperationId.current;
+        setCheckinError('Your check-in could not load. Check your connection and try again.');
+        setCheckinLoading(false);
+      });
+    } catch {
+      if (stillCurrent()) {
+        setCheckinError('Your check-in could not load. Check your connection and try again.');
+        setCheckinLoading(false);
+      }
+    }
+    return () => { active = false; unsubscribe(); };
+  }, [authUid, dayRevision, reloadRevision]));
+
   useEffect(() => {
     const checkDay = () => {
       if (localDayKey() !== currentDay.current) {
@@ -267,6 +334,30 @@ export default function TodayScreen() {
     if (current.completed || toggleStep(current.id)) nextPlayerStep();
   }
 
+  function changeSkinFeel(feel: SkinFeel | null) {
+    const day = localDayKey();
+    const uid = auth().currentUser?.uid;
+    if (!uid || checkinIdentity?.uid !== uid || checkinIdentity.day !== day || checkinLoading) return;
+    const epoch = identityEpoch.current;
+    const operation = ++checkinOperationId.current;
+    setCheckinSaving(true);
+    setCheckinError(null);
+    const write = feel === null
+      ? SkinFeelCheckinService.removeToday(day, uid)
+      : SkinFeelCheckinService.setToday(day, uid, feel);
+    void write.then(() => {
+      if (mounted.current && identityEpoch.current === epoch && auth().currentUser?.uid === uid && checkinOperationId.current === operation) {
+        setSkinFeel(feel);
+        setCheckinSaving(false);
+      }
+    }).catch(() => {
+      if (mounted.current && identityEpoch.current === epoch && auth().currentUser?.uid === uid && checkinOperationId.current === operation) {
+        setCheckinSaving(false);
+        setCheckinError('Your check-in could not sync. Check your connection or membership and try again.');
+      }
+    });
+  }
+
   const morningSteps = steps.filter(step => step.period === 'morning');
   const eveningSteps = steps.filter(step => step.period === 'evening');
   const completedCount = steps.filter(step => step.completed).length;
@@ -282,6 +373,8 @@ export default function TodayScreen() {
   const requestIsCurrent = sameAuthSession && requestIdentity?.uid === liveUid && requestIdentity.day === liveDay;
   const dataIsCurrent = sameAuthSession && loadedIdentity?.uid === liveUid && loadedIdentity.day === liveDay;
   const showLoading = !requestIsCurrent || loading || (!dataIsCurrent && !loadError);
+  const activeTrialEnd = dataIsCurrent && trialEndsAtMs && trialEndsAtMs > Date.now() ? trialEndsAtMs : null;
+  const trialDaysLeft = activeTrialEnd ? Math.max(1, Math.ceil((activeTrialEnd - Date.now()) / (24 * 60 * 60 * 1000))) : 0;
 
   return (
     <View style={styles.screen}>
@@ -313,6 +406,15 @@ export default function TodayScreen() {
             </LinearGradient>
           </ImageBackground>
         </View>
+
+        {activeTrialEnd && <View style={styles.trialBanner}>
+          <View style={styles.trialBannerCopy}>
+            <Text style={styles.trialEyebrow}>YOUR FREE ACCESS</Text>
+            <Text style={styles.trialTitle}>{trialDaysLeft} {trialDaysLeft === 1 ? 'day' : 'days'} remaining</Text>
+            <Text style={styles.trialDetail}>Ends {new Date(activeTrialEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}. No automatic charge.</Text>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="View membership options" onPress={() => router.push('/modal/paywall')} style={styles.trialAction}><Text style={styles.trialActionText}>View membership</Text><Ionicons name="arrow-forward" size={14} color={colors.primary} /></Pressable>
+        </View>}
 
         {dataIsCurrent && starterPlan && <View style={styles.startingPath}>
           <Text style={styles.startingEyebrow}>MADE FROM YOUR ANSWERS</Text>
@@ -362,6 +464,38 @@ export default function TodayScreen() {
             </View>
           </LinearGradient>
         </Card>
+
+        <View style={styles.checkinCard}>
+          <View style={styles.checkinHeading}>
+            <View style={styles.checkinIcon}><Ionicons name="flower-outline" size={19} color={colors.primary} /></View>
+            <View style={styles.checkinHeadingCopy}>
+              <Text style={styles.checkinEyebrow}>A MOMENT TO NOTICE</Text>
+              <Text style={styles.checkinTitle}>How does your skin feel today?</Text>
+            </View>
+          </View>
+          <Text style={styles.checkinIntro}>Optional. Choose what fits best; you can change or remove it today.</Text>
+          {checkinLoading
+            ? <ActivityIndicator style={styles.checkinLoader} color={colors.primary} size="small" />
+            : checkinIdentity?.uid === liveUid && checkinIdentity?.day === liveDay ? <>
+              <View style={styles.checkinChoices}>
+                {FEEL_CHOICES.map(choice => <Pressable
+                  key={choice.value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: skinFeel === choice.value }}
+                  accessibilityLabel={choice.label}
+                  onPress={() => changeSkinFeel(choice.value)}
+                  style={[styles.checkinChoice, skinFeel === choice.value && styles.checkinChoiceSelected]}
+                ><Text style={[styles.checkinChoiceText, skinFeel === choice.value && styles.checkinChoiceTextSelected]}>{choice.label}</Text></Pressable>)}
+              </View>
+              <View style={styles.checkinFooter}>
+                {skinFeel && <Pressable accessibilityRole="button" onPress={() => changeSkinFeel(null)} style={styles.checkinRemove}><Text style={styles.checkinRemoveText}>Remove today’s check-in</Text></Pressable>}
+                {(checkinSaving || checkinPendingWrites) && <Text accessibilityLiveRegion="polite" style={styles.checkinStatus}>Waiting to sync…</Text>}
+              </View>
+            </> : null}
+          {checkinError && <Text accessibilityRole="alert" style={styles.checkinError}>{checkinError}</Text>}
+          {checkinError && !checkinIdentity && <Pressable accessibilityRole="button" onPress={() => setReloadRevision(revision => revision + 1)} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable>}
+          <Text style={styles.checkinPrivacy}>If you choose, your observation is saved privately to your account.</Text>
+        </View>
 
         {/* Morning Ritual Section */}
         <View style={styles.sectionHeaderRow}>
@@ -512,6 +646,13 @@ const styles = StyleSheet.create({
   retryText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   syncError: { color: '#A64032', backgroundColor: colors.terracottaLight, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 18 },
   startingPath: { backgroundColor: '#FBFAF6', borderColor: '#E4E4D9', borderWidth: 1, borderRadius: 20, padding: 18, marginBottom: spacing.md },
+  trialBanner: { backgroundColor: colors.primarySoft, borderColor: colors.primaryLight, borderWidth: 1, borderRadius: 17, paddingHorizontal: 15, paddingVertical: 12, marginBottom: spacing.md },
+  trialBannerCopy: { flex: 1 },
+  trialEyebrow: { color: colors.primaryLight, fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
+  trialTitle: { color: colors.primary, fontSize: 17, fontWeight: '700', marginTop: 3 },
+  trialDetail: { color: colors.textSecondary, fontSize: 12, marginTop: 3 },
+  trialAction: { alignSelf: 'flex-start', minHeight: 44, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  trialActionText: { color: colors.primary, fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
   startingEyebrow: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.5, fontWeight: '800' },
   startingTitle: { color: colors.primary, fontSize: 23, fontWeight: '700', marginTop: 6 },
   startingIntro: { color: colors.textSecondary, fontSize: 13, marginTop: 5, marginBottom: 12 },
@@ -520,6 +661,25 @@ const styles = StyleSheet.create({
   startingDay: { width: 69, paddingTop: 3 }, startingDayText: { color: colors.goldDark, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
   startingMomentCopy: { flex: 1 }, startingMomentTitle: { color: colors.primary, fontSize: 14, fontWeight: '700' },
   startingMomentDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 3 },
+  checkinCard: { backgroundColor: '#FBFAF6', borderWidth: 1, borderColor: '#E4E4D9', borderRadius: 20, padding: 18, marginBottom: spacing.lg },
+  checkinHeading: { flexDirection: 'row', alignItems: 'center', gap: 11 },
+  checkinIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' },
+  checkinHeadingCopy: { flex: 1 },
+  checkinEyebrow: { color: colors.primaryLight, fontSize: 10, fontWeight: '800', letterSpacing: 1.2 },
+  checkinTitle: { color: colors.primary, fontSize: 17, fontWeight: '700', marginTop: 3 },
+  checkinIntro: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 13, marginBottom: 13 },
+  checkinChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  checkinChoice: { minHeight: 44, paddingHorizontal: 13, paddingVertical: 10, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 12, justifyContent: 'center' },
+  checkinChoiceSelected: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  checkinChoiceText: { color: colors.textPrimary, fontSize: 12, fontWeight: '600' },
+  checkinChoiceTextSelected: { color: colors.primary, fontWeight: '700' },
+  checkinFooter: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 5 },
+  checkinRemove: { minHeight: 44, justifyContent: 'center' },
+  checkinRemoveText: { color: colors.primary, fontSize: 12, textDecorationLine: 'underline' },
+  checkinStatus: { color: colors.textSecondary, fontSize: 11 },
+  checkinLoader: { marginVertical: 12 },
+  checkinError: { color: '#A64032', fontSize: 12, lineHeight: 18, marginTop: 8 },
+  checkinPrivacy: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 6 },
   editorialBanner: {
     marginTop: spacing.sm,
     marginBottom: spacing.md,

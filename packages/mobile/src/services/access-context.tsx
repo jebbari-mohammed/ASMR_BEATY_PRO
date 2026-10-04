@@ -13,6 +13,7 @@ type AccessContextValue = {
   revalidating: boolean;
   email: string | null;
   error: string | null;
+  trialEndsAtMs: number | null;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -24,11 +25,13 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
   const [revalidating, setRevalidating] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [trialEndsAtMs, setTrialEndsAtMs] = useState<number | null>(null);
   const refreshId = useRef(0);
   const verifiedUid = useRef<string | null>(null);
   const pendingAutomaticRefresh = useRef<{ uid: string | null; promise: Promise<void> } | null>(null);
   const lastForegroundRefresh = useRef(0);
   const signingOut = useRef(false);
+  const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runRefresh = useCallback((automatic: boolean): Promise<void> => {
     const uid = auth().currentUser?.uid ?? null;
@@ -37,6 +40,8 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
     }
     if (!automatic) pendingAutomaticRefresh.current = null;
     const thisRefresh = ++refreshId.current;
+    if (expiryTimer.current) clearTimeout(expiryTimer.current);
+    expiryTimer.current = null;
     const task = (async () => {
       const user = auth().currentUser;
       if (!user) {
@@ -44,6 +49,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
         setRevalidating(false);
         setEmail(null);
         setError(null);
+        setTrialEndsAtMs(null);
         setState('signedOut');
         return;
       }
@@ -52,6 +58,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
         verifiedUid.current = null;
         setRevalidating(false);
         setError(null);
+        setTrialEndsAtMs(null);
         setState('verifyEmail');
         return;
       }
@@ -65,14 +72,23 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         await SubscriptionService.initialize(user.uid);
-        const active = await SubscriptionService.hasActiveEntitlement();
+        const verified = await SubscriptionService.verifyAccess();
         if (thisRefresh !== refreshId.current || auth().currentUser?.uid !== user.uid) return;
+        const active = verified.active;
         verifiedUid.current = active ? user.uid : null;
+        setTrialEndsAtMs(active && verified.source === 'app_trial' ? verified.expiresAtMs : null);
         setError(null);
         setState(active ? 'subscribed' : 'paywall');
+        if (active && verified.expiresAtMs !== null) {
+          // The backend remains authoritative. This timer only refreshes the
+          // visible gate if a trial or membership expires while the app stays open.
+          const delay = Math.min(Math.max(verified.expiresAtMs - Date.now() + 250, 1_000), 2_147_483_647);
+          expiryTimer.current = setTimeout(() => { void runRefresh(false); }, delay);
+        }
       } catch (cause) {
         if (thisRefresh !== refreshId.current || auth().currentUser?.uid !== user.uid) return;
         verifiedUid.current = null;
+        setTrialEndsAtMs(null);
         setError(cause instanceof Error ? cause.message : 'Could not verify membership.');
         setState('unavailable');
       } finally {
@@ -139,6 +155,8 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
     void bootstrap();
     return () => {
       mounted = false;
+      if (expiryTimer.current) clearTimeout(expiryTimer.current);
+      expiryTimer.current = null;
       unsubscribe();
       foreground.remove();
     };
@@ -148,7 +166,10 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
     signingOut.current = true;
     ++refreshId.current;
     verifiedUid.current = null;
+    setTrialEndsAtMs(null);
     pendingAutomaticRefresh.current = null;
+    if (expiryTimer.current) clearTimeout(expiryTimer.current);
+    expiryTimer.current = null;
     setRevalidating(false);
     setState('loading');
     const uid = auth().currentUser?.uid;
@@ -175,7 +196,7 @@ export function AccessProvider({ children }: { children: React.ReactNode }) {
   }, [runRefresh]);
 
   return (
-    <AccessContext.Provider value={{ state, revalidating, email, error, refresh, signOut }}>
+    <AccessContext.Provider value={{ state, revalidating, email, error, trialEndsAtMs, refresh, signOut }}>
       {children}
     </AccessContext.Provider>
   );

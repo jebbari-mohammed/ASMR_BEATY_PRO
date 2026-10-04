@@ -124,6 +124,12 @@ test('adds guard expiry only after data cleanup and confirmed Auth deletion', as
   expect(guardWrites[0]).toMatchObject({ state: 'deleting' });
   expect(guardWrites[0]).not.toHaveProperty('expireAt');
   expect(events.indexOf('transaction-committed')).toBeLessThan(events.indexOf('storage-delete:transient-scans/user_123/'));
+  expect(events).toContain('transaction-delete:users/user_123/entitlements/review');
+  expect(events.indexOf('transaction-delete:users/user_123/entitlements/review'))
+    .toBeLessThan(events.indexOf('storage-delete:transient-scans/user_123/'));
+  expect(events).toContain('transaction-delete:users/user_123/entitlements/trial');
+  expect(events.indexOf('transaction-delete:users/user_123/entitlements/trial'))
+    .toBeLessThan(events.indexOf('storage-delete:transient-scans/user_123/'));
   expect(events.indexOf('transaction-committed')).toBeLessThan(events.indexOf('recursive-delete:users/user_123'));
   expect(events.indexOf('delete:usage/user_123')).toBeLessThan(events.indexOf('transaction-update:accountDeletionGuards/user_123:awaiting-auth'));
   expect(events.indexOf('transaction-update:accountDeletionGuards/user_123:awaiting-auth')).toBeLessThan(events.indexOf('auth-delete'));

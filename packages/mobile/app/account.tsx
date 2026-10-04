@@ -9,6 +9,7 @@ import { useAccess } from '../src/services/access-context';
 import { EditorialStatusBackdrop } from '../src/components/EditorialStatusBackdrop';
 import { OnboardingService } from '../src/services/onboarding-machine';
 import { UnsafeLocalCleanupError } from '../src/services/access-signout';
+import { buildStarterPlan } from '../src/services/personalized-starter';
 
 export default function AccountScreen() {
   const router = useRouter();
@@ -17,14 +18,26 @@ export default function AccountScreen() {
   const [mode, setMode] = useState<'signIn' | 'create'>('create');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [adultConfirmed, setAdultConfirmed] = useState(false);
+  const [planName, setPlanName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
   function revealForm() {
     // The editorial hero otherwise leaves the inputs behind the Android keyboard.
-    setTimeout(() => scrollRef.current?.scrollTo({ y: 320, animated: true }), 180);
+    setTimeout(() => scrollRef.current?.scrollTo({ y: 225, animated: true }), 180);
   }
+
+  useEffect(() => {
+    if (state !== 'signedOut') return;
+    let active = true;
+    OnboardingService.loadState().then(saved => {
+      if (active) setPlanName(saved.currentStep === 'COMPLETED' && saved.selectedGoals.length
+        ? buildStarterPlan(saved).ritualName : null);
+    }).catch(() => { if (active) setPlanName(null); });
+    return () => { active = false; };
+  }, [state]);
 
   useEffect(() => {
     if (state === 'subscribed') router.replace('/(tabs)/today');
@@ -40,11 +53,14 @@ export default function AccountScreen() {
     const address = email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(address)) { setMessage('Enter a valid email address.'); return; }
     if (mode === 'create' && password.length < 8) { setMessage('Use a password with at least 8 characters.'); return; }
+    if (mode === 'create' && !adultConfirmed) { setMessage('Confirm that you are 18 or older to create an account.'); return; }
     if (mode === 'signIn' && !password) { setMessage('Enter your password.'); return; }
     setBusy(true);
     setMessage(null);
     try {
       if (mode === 'create') {
+        const onboarding = await OnboardingService.loadState();
+        await OnboardingService.saveState({ ...onboarding, isAdult18Plus: true });
         const created = await auth().createUserWithEmailAndPassword(address, password);
         // Account creation must remain usable offline; a pending plan sync retries
         // when the user verifies their email or opens the paid routine.
@@ -109,7 +125,7 @@ export default function AccountScreen() {
       <View style={styles.verifyIcon}><Text style={styles.verifyIconText}>✉</Text></View>
       <Text style={styles.eyebrow}>ONE MORE STEP</Text>
       <Text style={styles.verifyTitle}>Verify your email.</Text>
-      <Text style={styles.verifyCopy}>We sent a link to {auth().currentUser?.email}. Confirm your address before choosing a membership so your account and purchases stay together.</Text>
+      <Text style={styles.verifyCopy}>We sent a link to {auth().currentUser?.email}. Confirm your address before starting ten days of free access so your ritual stays with your account.</Text>
       {message && <Text style={styles.error}>{message}</Text>}
       <Pressable disabled={busy} onPress={checkVerification} style={styles.cta}>{busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>I verified my email</Text>}</Pressable>
       <Pressable onPress={resendVerification} style={styles.linkButton}><Text style={styles.link}>Resend verification email</Text></Pressable>
@@ -123,20 +139,22 @@ export default function AccountScreen() {
         <ImageBackground source={localImages.editorialHero} resizeMode="cover" style={styles.hero}>
           <View style={styles.heroOverlay}>
             <Text style={styles.brand}>ASMR BEAUTY</Text>
-            <Text style={styles.heroTitle}>A calmer ritual starts here.</Text>
+            <Text style={styles.heroTitle}>{planName && mode === 'create' ? 'Your ritual is ready to keep.' : 'A calmer ritual starts here.'}</Text>
           </View>
         </ImageBackground>
         <View style={styles.form}>
           <Text style={styles.eyebrow}>YOUR PRIVATE SPACE</Text>
           <Text style={styles.title}>{mode === 'create' ? 'Create your account' : 'Welcome back'}</Text>
-          <Text style={styles.subtitle}>Save your routine and membership securely across devices.</Text>
+          <Text style={styles.subtitle}>{planName && mode === 'create' ? `Save ${planName}, then try the full ritual free for ten days. You can edit every step.` : 'Keep your ritual and progress safely across devices.'}</Text>
           <TextInput accessibilityLabel="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" placeholder="Email address" placeholderTextColor={colors.textTertiary} value={email} onChangeText={setEmail} onFocus={revealForm} style={styles.input} />
           <TextInput accessibilityLabel="Password" autoCapitalize="none" autoComplete={mode === 'create' ? 'new-password' : 'current-password'} secureTextEntry placeholder="Password" placeholderTextColor={colors.textTertiary} value={password} onChangeText={setPassword} onFocus={revealForm} style={styles.input} />
+          {mode === 'create' && <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: adultConfirmed }} onPress={() => setAdultConfirmed(value => !value)} style={styles.ageRow}><Text style={styles.checkbox}>{adultConfirmed ? '☑' : '□'}</Text><Text style={styles.ageText}>I am 18 or older. I understand the routine is cosmetic self-care, not medical advice.</Text></Pressable>}
           {message && <Text style={styles.error}>{message}</Text>}
           {accessError && <Text style={styles.error}>{accessError}</Text>}
           <Pressable disabled={busy} onPress={submit} style={[styles.cta, busy && { opacity: 0.6 }]}>
             {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{mode === 'create' ? 'Continue' : 'Sign in'}</Text>}
           </Pressable>
+          {mode === 'create' && <Text style={styles.nextStep}>Next: verify your email, then choose when to start ten days of free access. No payment needed.</Text>}
           <Pressable onPress={() => { setMode(mode === 'create' ? 'signIn' : 'create'); setMessage(null); }} style={styles.linkButton}>
             <Text style={styles.link}>{mode === 'create' ? 'Already have an account? Sign in' : 'New here? Create an account'}</Text>
           </Pressable>
@@ -152,7 +170,7 @@ export default function AccountScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  hero: { height: 320, justifyContent: 'flex-end' },
+  hero: { height: 230, justifyContent: 'flex-end' },
   heroOverlay: { padding: 26, paddingBottom: 34, backgroundColor: 'rgba(19,30,24,0.46)' },
   brand: { color: '#F0D3A9', fontSize: 11, fontWeight: '800', letterSpacing: 2.5, marginBottom: 14 },
   heroTitle: { color: 'white', fontSize: 32, lineHeight: 37, fontWeight: '700', maxWidth: 280 },
@@ -161,6 +179,9 @@ const styles = StyleSheet.create({
   title: { color: colors.primary, fontSize: 27, fontWeight: '700', marginTop: 7 },
   subtitle: { color: colors.textSecondary, fontSize: 14, lineHeight: 21, marginTop: 6, marginBottom: 23 },
   input: { backgroundColor: 'white', borderWidth: 1, borderColor: colors.border, borderRadius: 14, minHeight: 54, marginBottom: 12, paddingHorizontal: 16, fontSize: 16, color: colors.textPrimary },
+  ageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, minHeight: 52, marginTop: 2, marginBottom: 10 },
+  checkbox: { color: colors.primary, fontSize: 28, lineHeight: 30 }, ageText: { flex: 1, color: colors.textPrimary, fontSize: 13, lineHeight: 20 },
+  nextStep: { color: colors.textSecondary, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 11 },
   error: { color: '#A64032', marginBottom: 10, lineHeight: 19 },
   cta: { backgroundColor: colors.primary, borderRadius: 15, minHeight: 55, justifyContent: 'center', alignItems: 'center', marginTop: 5 },
   ctaText: { color: 'white', fontSize: 16, fontWeight: '700' },
