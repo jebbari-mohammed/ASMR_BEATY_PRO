@@ -21,8 +21,7 @@ export const STARTER_STEPS: RoutineStep[] = [
   { id: 'e3', period: 'evening', category: 'Hydrate', name: 'Moisturize', detail: 'Apply your usual moisturizer as directed.' }
 ];
 
-function routineDocument() {
-  const uid = auth().currentUser?.uid;
+function routineDocument(uid = auth().currentUser?.uid) {
   if (!uid) throw new Error('Sign in to access your routine.');
   return firestore().collection('users').doc(uid).collection('routines').doc('current');
 }
@@ -39,14 +38,19 @@ function validStep(step: unknown): step is RoutineStep {
 
 export class RoutineService {
   static async get(): Promise<RoutineStep[]> {
-    const snapshot = await routineDocument().get();
+    const uid = auth().currentUser?.uid;
+    if (!uid) throw new Error('Sign in to access your routine.');
+    const stillCurrent = () => auth().currentUser?.uid === uid;
+    const snapshot = await routineDocument(uid).get();
+    if (!stillCurrent()) throw new Error('Account changed while loading your routine.');
     if (!snapshot.exists()) {
-      const uid = auth().currentUser?.uid;
-      if (uid) {
-        try {
-          const saved = await OnboardingService.getStarterPreferences(uid);
-          if (saved) return buildStarterPlan(saved).steps;
-        } catch { /* A profile read should not prevent the safe generic starter routine. */ }
+      try {
+        const saved = await OnboardingService.getStarterPreferences(uid);
+        if (!stillCurrent()) throw new Error('Account changed while loading your routine.');
+        if (saved) return buildStarterPlan(saved).steps;
+      } catch {
+        // A profile read should not prevent the safe generic starter routine.
+        if (!stillCurrent()) throw new Error('Account changed while loading your routine.');
       }
       return STARTER_STEPS;
     }
@@ -55,11 +59,13 @@ export class RoutineService {
     return steps;
   }
 
-  static async save(steps: RoutineStep[]): Promise<void> {
+  static async save(steps: RoutineStep[], expectedUid: string): Promise<void> {
     if (steps.length < 1 || steps.length > 20 || !steps.every(validStep) || new Set(steps.map(step => step.id)).size !== steps.length) {
       throw new Error('A routine needs 1 to 20 valid, unique steps.');
     }
-    await routineDocument().set({ steps, updatedAt: Date.now() });
+    const uid = auth().currentUser?.uid;
+    if (!uid || uid !== expectedUid) throw new Error('Account changed before saving your routine.');
+    await routineDocument(uid).set({ steps, updatedAt: Date.now() });
   }
 
   static newStep(period: RoutinePeriod): RoutineStep {

@@ -1,7 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, ImageBackground, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import auth from '@react-native-firebase/auth';
 import { Header } from '../../src/components/Header';
 import { localImages } from '../../src/theme/images';
 import { colors } from '../../src/theme/tokens';
@@ -15,6 +16,7 @@ const icons: Record<ShelfCategory, keyof typeof Ionicons.glyphMap> = {
 export default function ShelfScreen() {
   const [items, setItems] = useState<ShelfItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -23,29 +25,78 @@ export default function ShelfScreen() {
   const [category, setCategory] = useState<ShelfCategory>('Moisturizer');
   const [openedOn, setOpenedOn] = useState('');
   const [saving, setSaving] = useState(false);
+  const [authUid, setAuthUid] = useState(auth().currentUser?.uid ?? null);
+  const [loadedUid, setLoadedUid] = useState<string | null>(null);
+  const [loadedEpoch, setLoadedEpoch] = useState<number | null>(null);
+  const currentUid = useRef(auth().currentUser?.uid ?? null);
+  const loadedUidRef = useRef<string | null>(null);
+  const identityEpoch = useRef(0);
+  const requestId = useRef(0);
+
+  useEffect(() => auth().onAuthStateChanged(user => {
+    const uid = user?.uid ?? null;
+    if (currentUid.current !== uid) {
+      currentUid.current = uid;
+      ++identityEpoch.current;
+      ++requestId.current;
+      setItems([]);
+      setLoadedUid(null);
+      setLoadedEpoch(null);
+      loadedUidRef.current = null;
+      setLoading(true);
+      setRefreshing(false);
+      setError(false);
+      setShowForm(false);
+      setEditingId(null);
+      setBrand('');
+      setName('');
+      setOpenedOn('');
+      setSaving(false);
+    }
+    setAuthUid(uid);
+  }), []);
 
   const load = useCallback(async () => {
-    try { setItems(await ShelfService.list()); setError(false); }
-    catch { setError(true); }
-    finally { setLoading(false); }
-  }, []);
+    const uid = authUid;
+    if (!uid || auth().currentUser?.uid !== uid) return;
+    const epoch = identityEpoch.current;
+    const request = ++requestId.current;
+    const stillCurrent = () => request === requestId.current && epoch === identityEpoch.current && auth().currentUser?.uid === uid;
+    setShowForm(false);
+    if (loadedUidRef.current === uid) setRefreshing(true);
+    else setLoading(true);
+    setError(false);
+    try {
+      const result = await ShelfService.list(uid);
+      if (stillCurrent()) { setItems(result); setLoadedUid(uid); setLoadedEpoch(epoch); loadedUidRef.current = uid; setError(false); }
+    } catch { if (stillCurrent()) setError(true); }
+    finally { if (stillCurrent()) { setLoading(false); setRefreshing(false); } }
+  }, [authUid]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    void load();
+    return () => { ++requestId.current; };
+  }, [load]));
 
   async function save() {
+    const uid = auth().currentUser?.uid;
+    if (!uid || authUid !== uid || loadedUid !== uid || loadedEpoch !== identityEpoch.current || loading || refreshing || error || saving) return;
+    const epoch = identityEpoch.current;
+    const stillCurrent = () => identityEpoch.current === epoch && auth().currentUser?.uid === uid;
+    const targetId = editingId;
     setSaving(true);
     try {
       const input = { brand, name, category, openedOn: openedOn.trim() || null };
-      if (editingId) {
-        await ShelfService.update(editingId, input);
-        setItems(current => current.map(item => item.id === editingId ? { ...item, ...input, name: name.trim(), brand: brand.trim() } : item));
+      if (targetId) {
+        await ShelfService.update(targetId, input, uid);
+        if (stillCurrent()) setItems(current => current.map(item => item.id === targetId ? { ...item, ...input, name: name.trim(), brand: brand.trim() } : item));
       } else {
-        const item = await ShelfService.add(input);
-        setItems((current) => [item, ...current]);
+        const item = await ShelfService.add(input, uid);
+        if (stillCurrent()) setItems((current) => [item, ...current]);
       }
-      setShowForm(false); setEditingId(null); setBrand(''); setName(''); setOpenedOn('');
-    } catch (cause) { Alert.alert('Could not save product', cause instanceof Error ? cause.message : 'Please try again.'); }
-    finally { setSaving(false); }
+      if (stillCurrent()) { setShowForm(false); setEditingId(null); setBrand(''); setName(''); setOpenedOn(''); }
+    } catch (cause) { if (stillCurrent()) Alert.alert('Could not save product', cause instanceof Error ? cause.message : 'Please try again.'); }
+    finally { if (stillCurrent()) setSaving(false); }
   }
 
   function openEdit(item: ShelfItem) {
@@ -57,14 +108,25 @@ export default function ShelfScreen() {
   }
 
   function confirmRemove(item: ShelfItem) {
+    const uid = auth().currentUser?.uid;
+    if (!uid || authUid !== uid || loadedUid !== uid || loadedEpoch !== identityEpoch.current || loading || refreshing || error) return;
+    const epoch = identityEpoch.current;
+    const stillCurrent = () => identityEpoch.current === epoch && auth().currentUser?.uid === uid;
     Alert.alert('Remove from shelf?', `Remove ${item.name} from your account?`, [
       { text: 'Keep', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: async () => {
-        try { await ShelfService.remove(item.id); setItems((current) => current.filter((entry) => entry.id !== item.id)); }
-        catch { Alert.alert('Could not remove product', 'Please try again.'); }
+        if (!stillCurrent()) return;
+        try {
+          await ShelfService.remove(item.id, uid);
+          if (stillCurrent()) setItems((current) => current.filter((entry) => entry.id !== item.id));
+        } catch { if (stillCurrent()) Alert.alert('Could not remove product', 'Please try again.'); }
       } }
     ]);
   }
+
+  const liveUid = auth().currentUser?.uid ?? null;
+  const sameAccount = !!liveUid && authUid === liveUid;
+  const dataIsCurrent = sameAccount && loadedUid === liveUid && loadedEpoch === identityEpoch.current;
 
   return <View style={styles.screen}>
     <Header />
@@ -73,16 +135,17 @@ export default function ShelfScreen() {
         <View style={styles.heroShade}><Text style={styles.heroEyebrow}>YOUR PERSONAL INVENTORY</Text><Text style={styles.heroTitle}>A place for what you use.</Text></View>
       </ImageBackground>
       <Text style={styles.subtitle}>Keep a simple record of your own products. Details here are entered by you; this shelf does not rate ingredients or recommend products.</Text>
-      <Pressable onPress={openAdd} style={styles.addButton}><Ionicons name="add" size={21} color="white" /><Text style={styles.addText}>Add a product</Text></Pressable>
-      <Text style={styles.section}>MY PRODUCTS  ·  {items.length}</Text>
-      {loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 28 }} /> : error ? <View style={styles.empty}><Text style={styles.emptyTitle}>Could not load your shelf</Text><Pressable onPress={load}><Text style={styles.link}>Try again</Text></Pressable></View> : items.length === 0 ? <View style={styles.empty}><Ionicons name="cube-outline" size={29} color={colors.goldDark} /><Text style={styles.emptyTitle}>Start with one product</Text><Text style={styles.emptyCopy}>Add a cleanser, moisturizer, sunscreen, or any product you already use.</Text></View> : items.map((item) => <View key={item.id} style={styles.card}>
+      <Pressable accessibilityRole="button" disabled={!dataIsCurrent || loading || refreshing || error} onPress={openAdd} style={[styles.addButton, (!dataIsCurrent || loading || refreshing || error) && { opacity: 0.6 }]}><Ionicons name="add" size={21} color="white" /><Text style={styles.addText}>Add a product</Text></Pressable>
+      <Text style={styles.section}>MY PRODUCTS  ·  {dataIsCurrent ? items.length : 0}</Text>
+      {refreshing && dataIsCurrent && <Text style={styles.refreshText}>Refreshing your shelf…</Text>}
+      {!sameAccount || loading ? <ActivityIndicator color={colors.primary} style={{ marginTop: 28 }} /> : error ? <View style={styles.empty}><Text style={styles.emptyTitle}>Could not load your shelf</Text><Pressable accessibilityRole="button" onPress={() => void load()}><Text style={styles.link}>Try again</Text></Pressable></View> : !dataIsCurrent ? <ActivityIndicator color={colors.primary} style={{ marginTop: 28 }} /> : items.length === 0 ? <View style={styles.empty}><Ionicons name="cube-outline" size={29} color={colors.goldDark} /><Text style={styles.emptyTitle}>Start with one product</Text><Text style={styles.emptyCopy}>Add a cleanser, moisturizer, sunscreen, or any product you already use.</Text></View> : items.map((item) => <View key={item.id} style={styles.card}>
         <View style={styles.productIcon}><Ionicons name={icons[item.category] as any} size={23} color={colors.primary} /></View>
         <View style={{ flex: 1 }}><Text style={styles.category}>{item.category.toUpperCase()}</Text><Text style={styles.name}>{item.name}</Text>{!!item.brand && <Text style={styles.brand}>{item.brand}</Text>}{item.openedOn && <Text style={styles.opened}>Opened {item.openedOn}</Text>}</View>
-        <Pressable accessibilityLabel={`Edit ${item.name}`} onPress={() => openEdit(item)} style={styles.delete}><Ionicons name="create-outline" size={19} color={colors.primary} /></Pressable>
-        <Pressable accessibilityLabel={`Remove ${item.name}`} onPress={() => confirmRemove(item)} style={styles.delete}><Ionicons name="trash-outline" size={18} color={colors.textTertiary} /></Pressable>
+        <Pressable accessibilityLabel={`Edit ${item.name}`} disabled={refreshing || saving} onPress={() => openEdit(item)} style={styles.delete}><Ionicons name="create-outline" size={19} color={colors.primary} /></Pressable>
+        <Pressable accessibilityLabel={`Remove ${item.name}`} disabled={refreshing || saving} onPress={() => confirmRemove(item)} style={styles.delete}><Ionicons name="trash-outline" size={18} color={colors.textTertiary} /></Pressable>
       </View>)}
     </ScrollView>
-    <Modal visible={showForm} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
+    <Modal visible={showForm && dataIsCurrent && !loading && !refreshing && !error} transparent animationType="slide" onRequestClose={() => setShowForm(false)}>
       <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><ScrollView style={styles.sheet} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
         <View style={styles.sheetTop}><Text style={styles.sheetTitle}>{editingId ? 'Edit product' : 'Add a product'}</Text><Pressable onPress={() => setShowForm(false)}><Ionicons name="close" size={22} color={colors.primary} /></Pressable></View>
         <Text style={styles.fieldLabel}>PRODUCT NAME</Text><TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Gentle cleanser" maxLength={100} />
@@ -103,7 +166,7 @@ const styles = StyleSheet.create({
   addButton: { backgroundColor: colors.primary, minHeight: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center', flexDirection: 'row', gap: 7 }, addText: { color: 'white', fontWeight: '700', fontSize: 15 },
   section: { color: colors.goldDark, fontWeight: '800', fontSize: 10, letterSpacing: 1.5, marginTop: 28, marginBottom: 13 },
   empty: { backgroundColor: 'white', borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 24, alignItems: 'center' }, emptyTitle: { color: colors.primary, fontSize: 17, fontWeight: '700', marginTop: 8 },
-  emptyCopy: { color: colors.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19, marginTop: 7 }, link: { color: colors.primary, fontWeight: '700', marginTop: 12 },
+  emptyCopy: { color: colors.textSecondary, fontSize: 13, textAlign: 'center', lineHeight: 19, marginTop: 7 }, link: { color: colors.primary, fontWeight: '700', marginTop: 12 }, refreshText: { color: colors.textSecondary, fontSize: 12, marginBottom: 9 },
   card: { flexDirection: 'row', backgroundColor: 'white', borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 14, marginBottom: 10, gap: 13 },
   productIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center' }, category: { color: colors.goldDark, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
   name: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', marginTop: 3 }, brand: { color: colors.textSecondary, fontSize: 12, marginTop: 3 }, opened: { color: colors.textTertiary, fontSize: 11, marginTop: 5 }, delete: { padding: 5 },

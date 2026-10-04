@@ -39,7 +39,8 @@ export default function AccountScreen() {
   async function submit() {
     const address = email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(address)) { setMessage('Enter a valid email address.'); return; }
-    if (password.length < 8) { setMessage('Use a password with at least 8 characters.'); return; }
+    if (mode === 'create' && password.length < 8) { setMessage('Use a password with at least 8 characters.'); return; }
+    if (mode === 'signIn' && !password) { setMessage('Enter your password.'); return; }
     setBusy(true);
     setMessage(null);
     try {

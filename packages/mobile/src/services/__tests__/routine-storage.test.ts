@@ -8,6 +8,7 @@ const mockOnSnapshot = jest.fn();
 const mockTransactionGet = jest.fn();
 const mockTransactionSet = jest.fn();
 const mockRunTransaction = jest.fn();
+let mockUid: string | null = 'qa-user';
 
 jest.mock('../onboarding-machine', () => ({
   OnboardingService: { getStarterPreferences: jest.fn().mockResolvedValue(null) }
@@ -15,7 +16,7 @@ jest.mock('../onboarding-machine', () => ({
 
 jest.mock('@react-native-firebase/auth', () => ({
   __esModule: true,
-  default: () => ({ currentUser: { uid: 'qa-user' } })
+  default: () => ({ currentUser: mockUid ? { uid: mockUid } : null })
 }));
 
 jest.mock('@react-native-firebase/firestore', () => ({
@@ -37,6 +38,7 @@ jest.mock('@react-native-firebase/firestore', () => ({
 }));
 
 beforeEach(() => {
+  mockUid = 'qa-user';
   mockGet.mockReset();
   mockSet.mockReset();
   mockSet.mockResolvedValue(undefined);
@@ -45,6 +47,7 @@ beforeEach(() => {
   mockTransactionSet.mockReset();
   mockRunTransaction.mockReset();
   mockRunTransaction.mockImplementation(callback => callback({ get: mockTransactionGet, set: mockTransactionSet }));
+  jest.mocked(OnboardingService.getStarterPreferences).mockClear();
   jest.mocked(OnboardingService.getStarterPreferences).mockResolvedValue(null);
 });
 
@@ -65,6 +68,25 @@ test('a new account receives its previewed short routine before editing anything
   expect(OnboardingService.getStarterPreferences).toHaveBeenCalledWith('qa-user');
   expect(steps).toHaveLength(4);
   expect(steps[0]?.name).toBe('Moisturize');
+});
+
+test('a routine read cannot use another account’s starter preferences after an auth switch', async () => {
+  let finishRead!: (value: { exists: () => boolean }) => void;
+  mockGet.mockReturnValue(new Promise(resolve => { finishRead = resolve; }));
+
+  const read = RoutineService.get();
+  mockUid = 'second-user';
+  finishRead({ exists: () => false });
+
+  await expect(read).rejects.toThrow('Account changed while loading your routine.');
+  expect(OnboardingService.getStarterPreferences).not.toHaveBeenCalled();
+});
+
+test('a routine save cannot write to a different signed-in account', async () => {
+  mockUid = 'second-user';
+  await expect(RoutineService.save(STARTER_STEPS, 'qa-user'))
+    .rejects.toThrow('Account changed before saving your routine.');
+  expect(mockSet).not.toHaveBeenCalled();
 });
 
 test('a missing daily log starts with no completions', async () => {
