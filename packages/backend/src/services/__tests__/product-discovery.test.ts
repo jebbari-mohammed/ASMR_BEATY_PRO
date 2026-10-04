@@ -126,8 +126,9 @@ test.each([
   expect(() => validateApprovedTrackingHosts([{ ...approval, host }])).toThrow();
 });
 
-test('host approval cannot allow a personal query key', () => {
-  expect(() => validateApprovedTrackingHosts([{ ...approval, allowedQueryKeys: ['uid'] }])).toThrow();
+test.each(['uid', 'customerId', 'PartnerCustomerId', 'PCID', 'deviceId', 'email', 'phone', 'ipAddress'])
+('host approval cannot allow personal query key %s', key => {
+  expect(() => validateApprovedTrackingHosts([{ ...approval, allowedQueryKeys: [key] }])).toThrow();
 });
 
 test('rejects unapproved tracking parameters, dynamic UID placeholders, and hostile destinations', () => {

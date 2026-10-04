@@ -23,7 +23,7 @@ export interface ApprovedTrackingHost {
 
 const PRODUCT_FIELDS = ['id', 'brand', 'name', 'category', 'merchant', 'url', 'isCommissioned'];
 const CATEGORIES = new Set<DiscoveryCategory>(['Cleanser', 'Moisturizer', 'Sunscreen']);
-const PERSONAL_QUERY_KEY = /^(?:uid|user_?id|email|device_?id|idfa|gaid|skin|photo|scan)$/i;
+const PERSONAL_QUERY_KEY = /^(?:uid|user_?id|(?:partner_?)?customer_?id|pcid|email|phone|ip(?:_?address)?|device_?id|advertising_?id|idfa|gaid|session_?id|skin|photo|scan)$/i;
 
 function isDirectUltaProductUrl(url: URL): boolean {
   return url.hostname === 'www.ulta.com' &&

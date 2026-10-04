@@ -129,7 +129,9 @@ URLs.
 
 The runtime server still requires the separately approved host, HTTPS, no
 credentials, port, fragment, or dynamic placeholders, and only approved query
-keys on the supplied link. It rejects known personal-data query keys. The
+keys on the supplied link. It rejects known personal-data query keys, including
+Impact's Partner Customer ID parameter. Do not put visitor, account, routine,
+or shelf data in any tracking field or path. The
 operator-supplied URL is returned unchanged; the server does not append a user
 identifier or invent a campaign tag. The app shows a nearby commission
 disclosure only for products whose `isCommissioned` flag is true. To switch or
