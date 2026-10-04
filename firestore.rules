@@ -30,7 +30,8 @@ service cloud.firestore {
         && request.auth.token.email_verified == true
         && exists(entitlement)
         && get(entitlement).data.isPro == true
-        && (get(entitlement).data.expiresAt == null || get(entitlement).data.expiresAt > request.time);
+        && get(entitlement).data.expiresAt is timestamp
+        && get(entitlement).data.expiresAt > request.time;
     }
     
     // Keep profile creation and updates on the same server-owned field policy.

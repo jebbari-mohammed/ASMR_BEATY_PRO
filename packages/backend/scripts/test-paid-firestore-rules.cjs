@@ -20,9 +20,10 @@ async function main() {
     const aliceRoutine = doc(alice, 'users/alice/routines/current');
     const aliceProfile = doc(alice, 'users/alice');
     const entitlement = doc(alice, 'users/alice/entitlements/pro');
+    const validLog = { day: '2026-09-27', completedIds: ['m1'], updatedAt: Date.now() };
 
     await assertFails(getDoc(aliceLog));
-    await assertFails(setDoc(aliceLog, { completed: true }));
+    await assertFails(setDoc(aliceLog, validLog));
     await assertFails(setDoc(aliceRoutine, { steps: [{ id: 'm1' }], updatedAt: Date.now() }));
     await assertFails(setDoc(entitlement, { isPro: true, expiresAt: null }));
 
@@ -45,15 +46,28 @@ async function main() {
     const seed = async (isPro, expiresAt) => testEnv.withSecurityRulesDisabled(async context => {
       await setDoc(doc(context.firestore(), 'users/alice/entitlements/pro'), { isPro, expiresAt });
     });
-    await seed(false, null);
-    await assertFails(setDoc(aliceLog, { completed: true }));
+    await seed(false, Timestamp.fromMillis(Date.now() + 60_000));
+    await assertFails(setDoc(aliceLog, validLog));
+    // An older verifier could cache a Test Store lifetime entitlement with
+    // isPro=true and no expiry. A paid client must not retain access to it.
+    await seed(true, null);
+    await assertFails(setDoc(aliceLog, validLog));
+    await seed(true, new Date(Date.now() + 60_000).toISOString());
+    await assertFails(setDoc(aliceLog, validLog));
+    await testEnv.withSecurityRulesDisabled(async context => {
+      await setDoc(doc(context.firestore(), 'users/alice/entitlements/pro'), { isPro: true });
+    });
+    await assertFails(setDoc(aliceLog, validLog));
     await seed(true, Timestamp.fromMillis(Date.now() - 60_000));
-    await assertFails(setDoc(aliceLog, { completed: true }));
+    await assertFails(setDoc(aliceLog, validLog));
     await seed(true, Timestamp.fromMillis(Date.now() + 60_000));
-    const validLog = { day: '2026-09-27', completedIds: ['m1'], updatedAt: Date.now() };
     const validShelf = { id: 'abcdefgh1234', brand: 'Example', name: 'Moisturizer', category: 'Moisturizer', openedOn: null, addedAt: Date.now() };
     await assertSucceeds(setDoc(aliceLog, validLog));
     await assertSucceeds(getDoc(aliceLog));
+    await seed(true, null);
+    await assertFails(getDoc(aliceLog));
+    await assertFails(setDoc(aliceLog, validLog));
+    await seed(true, Timestamp.fromMillis(Date.now() + 60_000));
     await assertSucceeds(setDoc(aliceShelf, validShelf));
     await assertFails(setDoc(aliceLog, { ...validLog, completedIds: Array(21).fill('m1') }));
     await assertFails(setDoc(aliceLog, { ...validLog, privilege: 'admin' }));
