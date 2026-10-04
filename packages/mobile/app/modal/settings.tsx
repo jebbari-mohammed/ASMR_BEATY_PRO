@@ -20,7 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing, typography, radii, shadows } from '../../src/theme/tokens';
 import { Card } from '../../src/components/Card';
-import { SubscriptionService } from '../../src/services/subscription-service';
+import { PurchaseVerificationPendingError, SubscriptionService } from '../../src/services/subscription-service';
 import { OnboardingService } from '../../src/services/onboarding-machine';
 import * as SecureStore from 'expo-secure-store';
 import functions from '@react-native-firebase/functions';
@@ -109,9 +109,11 @@ export default function SettingsModal() {
       } else {
         Alert.alert('Restore Purchases', 'No active subscription found for this Apple ID / Google Play account.');
       }
-    } catch {
+    } catch (cause) {
       setIsRestoring(false);
-      Alert.alert('Restore unavailable', 'Check that this device has access to the App Store or Google Play and try again.');
+      Alert.alert(cause instanceof PurchaseVerificationPendingError ? 'Membership verification pending' : 'Restore unavailable',
+        cause instanceof PurchaseVerificationPendingError
+          ? cause.message : 'Check that this device has access to the App Store or Google Play and try again.');
     }
   };
 

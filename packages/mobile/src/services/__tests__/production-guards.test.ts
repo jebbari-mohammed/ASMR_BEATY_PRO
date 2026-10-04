@@ -533,6 +533,30 @@ test('restore reports only an actual store membership', async () => {
   }
 });
 
+test('restore does not call a store-confirmed membership absent when server verification lags', async () => {
+  const originalKey = REVENUECAT_CONFIG.appleApiKey;
+  REVENUECAT_CONFIG.appleApiKey = 'appl_test';
+  mockCurrentUser = { uid: 'restore-pending', emailVerified: true };
+  (Purchases.restorePurchases as jest.Mock).mockResolvedValue({
+    entitlements: { active: { [REVENUECAT_CONFIG.entitlementId]: { isActive: true } } }
+  });
+  try {
+    await SubscriptionService.initialize('restore-pending');
+    mockVerify.mockResolvedValueOnce({ data: {
+      isPro: false, source: 'revenuecat_server', expiresAtMs: null
+    } });
+    await expect(SubscriptionService.restorePurchases())
+      .rejects.toThrow('The store found an active membership');
+    mockVerify.mockRejectedValueOnce(new Error('network unavailable'));
+    await expect(SubscriptionService.restorePurchases())
+      .rejects.toThrow('Do not buy again');
+    expect(Purchases.restorePurchases).toHaveBeenCalledTimes(2);
+  } finally {
+    REVENUECAT_CONFIG.appleApiKey = originalKey;
+    mockCurrentUser = null;
+  }
+});
+
 test('exact free access does not require store configuration or start silently', async () => {
   mockCurrentUser = { uid: 'free-user', emailVerified: true };
   const originalKey = REVENUECAT_CONFIG.appleApiKey;

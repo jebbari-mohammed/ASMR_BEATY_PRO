@@ -17,10 +17,12 @@ export type FreeTrialStatus = {
 export type VerifiedAccess = { active: boolean; expiresAtMs: number | null; source: string | null };
 
 export class PurchaseVerificationPendingError extends Error {
-  constructor(confirmedByStore: boolean) {
-    super(confirmedByStore
-      ? 'Your store purchase completed, but membership is not active yet. Do not buy again. Use Restore purchases after reconnecting.'
-      : 'Your store purchase may have completed, but we could not verify it yet. Do not buy again. Use Restore purchases after reconnecting.');
+  constructor(confirmedByStore: boolean, fromRestore = false) {
+    super(fromRestore
+      ? 'The store found an active membership, but we could not verify access yet. Do not buy again. Try Restore purchases after reconnecting.'
+      : confirmedByStore
+        ? 'Your store purchase completed, but membership is not active yet. Do not buy again. Use Restore purchases after reconnecting.'
+        : 'Your store purchase may have completed, but we could not verify it yet. Do not buy again. Use Restore purchases after reconnecting.');
   }
 }
 
@@ -199,8 +201,17 @@ export class SubscriptionService {
     if (!this.isPurchaseReady()) {
       throw new Error('The store is not ready to restore purchases. Reload access and plans, then try again.');
     }
-    await Purchases.restorePurchases();
-    return this.hasActiveEntitlement(true);
+    const restored = await Purchases.restorePurchases();
+    const activeInStore = !!restored?.entitlements?.active?.[REVENUECAT_CONFIG.entitlementId];
+    let activeOnServer: boolean;
+    try {
+      activeOnServer = await this.hasActiveEntitlement(true);
+    } catch (error) {
+      if (activeInStore) throw new PurchaseVerificationPendingError(true, true);
+      throw error;
+    }
+    if (activeInStore && !activeOnServer) throw new PurchaseVerificationPendingError(true, true);
+    return activeOnServer;
   }
 
   static async getStorePackages(): Promise<PurchasesPackage[]> {

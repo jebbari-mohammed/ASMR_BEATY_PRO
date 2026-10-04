@@ -174,9 +174,11 @@ export default function PaywallScreen() {
       await refresh();
       if (!active) Alert.alert('No verified membership yet', 'The store did not return an active subscription for this account. If checkout recently completed, wait a moment and try Restore purchases again.');
     } catch (cause) {
+      if (cause instanceof PurchaseVerificationPendingError) setPurchaseNeedsRestore(true);
       await refresh();
-      Alert.alert('Restore unavailable', cause instanceof Error && cause.message.startsWith('The store is not ready')
-        ? cause.message : 'Check that this device has access to the App Store or Google Play and try again.');
+      Alert.alert(cause instanceof PurchaseVerificationPendingError ? 'Membership verification pending' : 'Restore unavailable',
+        cause instanceof PurchaseVerificationPendingError || cause instanceof Error && cause.message.startsWith('The store is not ready')
+          ? cause.message : 'Check that this device has access to the App Store or Google Play and try again.');
     }
     finally { setBusy(false); }
   }
