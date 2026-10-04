@@ -19,7 +19,8 @@ This checklist records the current release status for the **routine, calendar, s
 ## Billing on both stores
 
 - [x] Confirm annual and monthly store products are attached to RevenueCat entitlement `asmr_beaty_pro_pro` and current offering `default` in the RevenueCat dashboard. Purchase delivery on signed builds remains open.
-- [ ] Verify the exact-SKU, finite-expiration RevenueCat verifier revision against signed Apple and Play purchase/restore flows, then deploy it and repeat the checks against the live backend. The source fix prevents a Test Store lifetime projection from granting perpetual Pro access, but is not yet live.
+- [x] Deploy the exact-SKU, finite-expiration RevenueCat verifier and Firestore paid-access rule. Both affected Functions and the rule were updated October 3, 2026 Pacific time. The live rule text requires a future timestamp; the Test webhook returned 401 without its token and 200 with it. A read-only scan found five live entitlement records, with one Pro record carrying a timestamp expiry and none carrying a null expiry.
+- [ ] Verify the deployed verifier against signed Apple and Play purchase, restore, refund, grace, and account-switch flows before public release. The authenticated membership callable requires a real signed-device App Check token, so local unit and emulator tests plus the webhook TEST event do not prove those flows.
 - [ ] Complete a sandbox/closed-test purchase for each platform with the final signed build.
 - [ ] Verify restore, cancellation, failed checkout, expiration, refund, grace period, reinstall, account switch, and offline return.
 - [ ] Compare the displayed localized price, billing period, and any introductory offer against the store checkout sheet.
