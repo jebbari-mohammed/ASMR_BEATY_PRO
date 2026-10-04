@@ -8,7 +8,7 @@ import type { PurchasesPackage } from 'react-native-purchases';
 import auth from '@react-native-firebase/auth';
 import { localImages } from '../../src/theme/images';
 import { colors } from '../../src/theme/tokens';
-import { FreeTrialStatus, SubscriptionService } from '../../src/services/subscription-service';
+import { FreeTrialStatus, PurchaseVerificationPendingError, SubscriptionService } from '../../src/services/subscription-service';
 import { useAccess } from '../../src/services/access-context';
 import { EditorialStatusBackdrop } from '../../src/components/EditorialStatusBackdrop';
 import { OnboardingService } from '../../src/services/onboarding-machine';
@@ -46,6 +46,7 @@ export default function PaywallScreen() {
   const [error, setError] = useState<string | null>(null);
   const [storeError, setStoreError] = useState<string | null>(null);
   const [switchAccountError, setSwitchAccountError] = useState<string | null>(null);
+  const [purchaseNeedsRestore, setPurchaseNeedsRestore] = useState(false);
   const [starterPlanState, setStarterPlanState] = useState<{ uid: string; plan: StarterPlan } | null>(null);
   const loadId = useRef(0);
   const currentUid = auth().currentUser?.uid ?? null;
@@ -113,8 +114,8 @@ export default function PaywallScreen() {
   const plan = packages.find((item) => item.identifier === selected);
   const selectedTrial = plan ? trialPeriodLabel(freeTrials[plan.identifier] ?? null) : null;
   const canStartAppTrial = appTrial?.eligible === true;
-  const freeAccessIsPrimary = canStartAppTrial && (!purchaseIntent || !plan);
-  const showPlanSelection = !canStartAppTrial || purchaseIntent;
+  const freeAccessIsPrimary = canStartAppTrial && !purchaseNeedsRestore && (!purchaseIntent || !plan);
+  const showPlanSelection = !canStartAppTrial || purchaseIntent || purchaseNeedsRestore;
   const activeAppTrial = appTrial?.active === true;
   const completedAppTrial = appTrial?.eligible === false && appTrial.active === false && !!appTrial.endsAt;
   const annual = packages.find((item) => item.packageType === 'ANNUAL');
@@ -134,10 +135,7 @@ export default function PaywallScreen() {
       router.replace('/(tabs)/today');
     } catch (cause: any) {
       if (cause?.userCancelled || String(cause?.message).toLowerCase().includes('cancelled')) return;
-      if (String(cause?.message).includes('Membership verification is temporarily unavailable')) {
-        await refresh();
-        return;
-      }
+      if (cause instanceof PurchaseVerificationPendingError) setPurchaseNeedsRestore(true);
       setError(cause instanceof Error ? cause.message : 'Could not complete purchase.');
     } finally { setBusy(false); }
   }
@@ -147,11 +145,23 @@ export default function PaywallScreen() {
     setBusy(true);
     setError(null);
     try {
-      await SubscriptionService.startFreeTrial();
+      const started = await SubscriptionService.startFreeTrial();
+      setAppTrial(started);
       await refresh();
       router.replace('/(tabs)/today');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Could not start free access. Please try again.');
+      try {
+        const status = await SubscriptionService.getFreeTrialStatus();
+        setAppTrial(status);
+        if (status.active) {
+          await refresh();
+          router.replace('/(tabs)/today');
+        } else {
+          setError(cause instanceof Error ? cause.message : 'Could not start free access. Please try again.');
+        }
+      } catch {
+        setError('We could not confirm whether your ten days started. Reload access and plans before trying again.');
+      }
     } finally { setBusy(false); }
   }
 
@@ -160,11 +170,13 @@ export default function PaywallScreen() {
     setBusy(true);
     try {
       const active = await SubscriptionService.restorePurchases();
+      if (active) setPurchaseNeedsRestore(false);
       await refresh();
-      if (!active) Alert.alert('No active membership', 'No active subscription was found for this store account.');
-    } catch {
+      if (!active) Alert.alert('No verified membership yet', 'The store did not return an active subscription for this account. If checkout recently completed, wait a moment and try Restore purchases again.');
+    } catch (cause) {
       await refresh();
-      Alert.alert('Restore unavailable', 'Check that this device has access to the App Store or Google Play and try again.');
+      Alert.alert('Restore unavailable', cause instanceof Error && cause.message.startsWith('The store is not ready')
+        ? cause.message : 'Check that this device has access to the App Store or Google Play and try again.');
     }
     finally { setBusy(false); }
   }
@@ -188,7 +200,7 @@ export default function PaywallScreen() {
           <LinearGradient colors={['rgba(17,34,25,0.89)', 'rgba(17,34,25,0.34)', 'rgba(17,34,25,0.05)']} style={styles.heroShade}>
             <Text style={styles.brand}>ASMR BEAUTY  /  YOUR PRIVATE RITUAL</Text>
             <Text style={styles.headline}>A small ritual. A place to return.</Text>
-            <Text style={styles.heroCopy}>{canStartAppTrial ? 'Your plan is ready. Give it ten real days in your routine.' : 'Your plan is ready. Make it part of your actual day.'}</Text>
+            <Text style={styles.heroCopy}>{starterPlan ? canStartAppTrial ? 'Your plan is ready. Give it ten real days in your routine.' : 'Your plan is ready. Make it part of your actual day.' : canStartAppTrial ? 'Make a gentle ritual your own for ten real days.' : 'Make a gentle ritual part of your actual day.'}</Text>
           </LinearGradient>
         </ImageBackground>
         <View style={styles.body}>
@@ -211,7 +223,7 @@ export default function PaywallScreen() {
           {activeAppTrial && <View style={styles.freeAccessCard}>
             <Text style={styles.freeAccessEyebrow}>YOUR FREE ACCESS IS OPEN</Text>
             <Text style={styles.freeAccessTitle}>Stay with your ritual.</Text>
-            <Text style={styles.freeAccessCopy}>You can choose a membership now to keep your routine after your ten free days. The store will show the price and any eligible offer before you confirm.</Text>
+            <Text style={styles.freeAccessCopy}>You can subscribe now or continue your free days. If you subscribe now, store billing begins on the store’s displayed terms; unused free-app days do not delay it.</Text>
             <Pressable accessibilityRole="button" onPress={() => router.replace('/(tabs)/today')} style={styles.continueRitual}><Text style={styles.continueRitualText}>Continue my ritual</Text><Ionicons name="arrow-forward" size={17} color={colors.primary} /></Pressable>
           </View>}
           {completedAppTrial && <View style={styles.freeAccessCard}>
@@ -257,11 +269,11 @@ export default function PaywallScreen() {
         </View>
       </ScrollView>
       <View style={[styles.purchaseDock, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-        <Pressable disabled={busy || loading || (!freeAccessIsPrimary && (!plan || storeLoading))} onPress={freeAccessIsPrimary ? startFreeAccess : purchase} accessibilityRole="button" style={[styles.cta, (busy || loading || (!freeAccessIsPrimary && (!plan || storeLoading))) && { opacity: 0.55 }]}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{freeAccessIsPrimary ? 'Start my 10 days free' : plan ? selectedTrial ? 'Start my store trial' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}` : 'Choose a membership'}</Text>}
+        <Pressable disabled={busy || loading || (!purchaseNeedsRestore && !freeAccessIsPrimary && (!plan || storeLoading))} onPress={purchaseNeedsRestore ? restore : freeAccessIsPrimary ? startFreeAccess : purchase} accessibilityRole="button" style={[styles.cta, (busy || loading || (!purchaseNeedsRestore && !freeAccessIsPrimary && (!plan || storeLoading))) && { opacity: 0.55 }]}>
+          {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{purchaseNeedsRestore ? 'Verify my store purchase' : freeAccessIsPrimary ? 'Start my 10 days free' : plan ? selectedTrial ? 'Start my store trial' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}` : 'Choose a membership'}</Text>}
         </Pressable>
         {freeAccessIsPrimary ? <Text style={styles.terms}>Ten days of free app access. No payment or automatic charge. When it ends, a store subscription is required to continue.</Text> : plan && <Text style={styles.terms}>{selectedTrial ? `Free for ${selectedTrial}, then ${plan.product.priceString} per ${periodLabel(plan)}. Cancel before the store trial ends to avoid a charge. ` : `${plan.product.priceString} per ${periodLabel(plan)}. `}The subscription renews automatically until cancelled in store settings. The store confirms the offer before purchase.</Text>}
-        {canStartAppTrial && !freeAccessIsPrimary && <Pressable disabled={busy} accessibilityRole="button" onPress={() => setPurchaseIntent(false)} style={styles.freeInstead}><Text style={styles.freeInsteadText}>Take ten days free instead</Text></Pressable>}
+        {canStartAppTrial && !freeAccessIsPrimary && !purchaseNeedsRestore && <Pressable disabled={busy} accessibilityRole="button" onPress={() => setPurchaseIntent(false)} style={styles.freeInstead}><Text style={styles.freeInsteadText}>Take ten days free instead</Text></Pressable>}
         <Pressable onPress={restore} disabled={busy} accessibilityRole="button" style={styles.restore}><Text style={styles.restoreText}>Restore purchases</Text></Pressable>
       </View>
       <EditorialStatusBackdrop />

@@ -16,6 +16,14 @@ export type FreeTrialStatus = {
 
 export type VerifiedAccess = { active: boolean; expiresAtMs: number | null; source: string | null };
 
+export class PurchaseVerificationPendingError extends Error {
+  constructor(confirmedByStore: boolean) {
+    super(confirmedByStore
+      ? 'Your store purchase completed, but membership is not active yet. Do not buy again. Use Restore purchases after reconnecting.'
+      : 'Your store purchase may have completed, but we could not verify it yet. Do not buy again. Use Restore purchases after reconnecting.');
+  }
+}
+
 function isFreeTrialStatus(value: unknown): value is FreeTrialStatus {
   if (!value || typeof value !== 'object') return false;
   const status = value as Partial<FreeTrialStatus>;
@@ -161,9 +169,14 @@ export class SubscriptionService {
       }
 
       await Purchases.purchasePackage(currentPackage);
-      const isPro = await this.hasActiveEntitlement(true);
+      let isPro: boolean;
+      try {
+        isPro = await this.hasActiveEntitlement(true);
+      } catch {
+        throw new PurchaseVerificationPendingError(false);
+      }
       if (!isPro) {
-        throw new Error('The purchase completed, but Pro is not active yet. Please restore purchases.');
+        throw new PurchaseVerificationPendingError(true);
       }
       return { success: true, planId };
     } catch (rcErr: any) {
@@ -179,7 +192,9 @@ export class SubscriptionService {
    * Restores existing purchases from App Store / Google Play.
    */
   static async restorePurchases(): Promise<boolean> {
-    if (!this.isPurchaseReady()) return false;
+    if (!this.isPurchaseReady()) {
+      throw new Error('The store is not ready to restore purchases. Reload access and plans, then try again.');
+    }
     await Purchases.restorePurchases();
     return this.hasActiveEntitlement(true);
   }
