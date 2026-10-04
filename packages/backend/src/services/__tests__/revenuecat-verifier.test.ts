@@ -1,4 +1,4 @@
-import { RevenueCatVerifier } from '../revenuecat-verifier.js';
+import { RevenueCatTransientError, RevenueCatVerifier } from '../revenuecat-verifier.js';
 
 const now = Date.parse('2026-09-27T12:00:00Z');
 
@@ -200,7 +200,40 @@ test('expired entitlement is denied even if a webhook cache says Pro', async () 
 test('missing server key and vendor failure fail closed', async () => {
   await expect(new RevenueCatVerifier(undefined, response(null), () => now).verify('user-123'))
     .rejects.toThrow('not configured');
+  const invalidKeyRequest = response(null);
+  await expect(new RevenueCatVerifier('server-secret\n', invalidKeyRequest, () => now).verify('user-123'))
+    .rejects.toThrow('not configured');
+  await expect(new RevenueCatVerifier('abc☃', invalidKeyRequest, () => now).verify('user-123'))
+    .rejects.toThrow('not configured');
+  expect(invalidKeyRequest).not.toHaveBeenCalled();
   const failed = jest.fn().mockResolvedValue({ ok: false, status: 503 }) as unknown as typeof fetch;
   await expect(new RevenueCatVerifier('server-secret', failed, () => now).verify('user-123'))
-    .rejects.toThrow('verification unavailable');
+    .rejects.toBeInstanceOf(RevenueCatTransientError);
+});
+
+test.each([429, 500, 503])('HTTP %i is a retryable verifier failure', async status => {
+  const request = jest.fn().mockResolvedValue({ ok: false, status }) as unknown as typeof fetch;
+  await expect(new RevenueCatVerifier('server-secret', request).verify('user-123'))
+    .rejects.toMatchObject({ name: 'RevenueCatTransientError', status });
+});
+
+test.each([400, 401, 403, 404])('HTTP %i cannot activate the outage fallback', async status => {
+  const request = jest.fn().mockResolvedValue({ ok: false, status }) as unknown as typeof fetch;
+  await expect(new RevenueCatVerifier('server-secret', request).verify('user-123'))
+    .rejects.not.toBeInstanceOf(RevenueCatTransientError);
+});
+
+test('network and timeout failures are retryable, while malformed responses are not', async () => {
+  const network = jest.fn().mockRejectedValue(new TypeError('fetch failed')) as unknown as typeof fetch;
+  await expect(new RevenueCatVerifier('server-secret', network).verify('user-123'))
+    .rejects.toBeInstanceOf(RevenueCatTransientError);
+  const timeout = jest.fn().mockRejectedValue(Object.assign(new Error('timed out'), { name: 'TimeoutError' })) as unknown as typeof fetch;
+  await expect(new RevenueCatVerifier('server-secret', timeout).verify('user-123'))
+    .rejects.toBeInstanceOf(RevenueCatTransientError);
+  const malformed = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) }) as unknown as typeof fetch;
+  await expect(new RevenueCatVerifier('server-secret', malformed).verify('user-123'))
+    .rejects.toThrow('response malformed');
+  const invalidJson = jest.fn().mockResolvedValue({ ok: true, json: async () => { throw new SyntaxError('bad JSON'); } }) as unknown as typeof fetch;
+  await expect(new RevenueCatVerifier('server-secret', invalidJson).verify('user-123'))
+    .rejects.not.toBeInstanceOf(RevenueCatTransientError);
 });

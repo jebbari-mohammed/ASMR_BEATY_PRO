@@ -98,13 +98,17 @@ export class SubscriptionService {
         purchaseOnly ? { purchaseOnly: true } : {}
       );
       const access = result.data as { isPro?: boolean; source?: string; expiresAtMs?: number | null };
-      const active = access.isPro === true &&
-        (!purchaseOnly || (access.source !== 'store_review' && access.source !== 'app_trial'));
+      const verifiedSource = access.source === 'revenuecat_server' || access.source === 'revenuecat_cache' ||
+        access.source === 'app_trial' || access.source === 'store_review' ? access.source : null;
+      const verifiedExpiry = typeof access.expiresAtMs === 'number' &&
+        Number.isFinite(access.expiresAtMs) ? access.expiresAtMs : null;
+      const active = access.isPro === true && verifiedSource !== null && verifiedExpiry !== null &&
+        (!purchaseOnly || verifiedSource === 'revenuecat_server');
+      const source = active ? verifiedSource : null;
       return {
         active,
-        expiresAtMs: active && typeof access.expiresAtMs === 'number' &&
-          Number.isFinite(access.expiresAtMs) ? access.expiresAtMs : null,
-        source: active && typeof access.source === 'string' ? access.source : null
+        expiresAtMs: active ? verifiedExpiry : null,
+        source
       };
     } catch (rcErr) {
       console.warn('[RevenueCat] CustomerInfo check warning:', rcErr);

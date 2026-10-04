@@ -93,9 +93,13 @@ export default function OnboardingScreen() {
   function choose(value: string) {
     if (step === 'GOALS') {
       const goals = answers.selectedGoals;
+      if (!goals.includes(value as PrimaryGoalOption) && goals.length >= 2 && value !== 'unsure_help_me_decide') {
+        Alert.alert('Choose up to two', 'Deselect one goal before choosing another.');
+        return;
+      }
       const selectedGoals = goals.includes(value as PrimaryGoalOption)
         ? goals.filter(item => item !== value)
-        : [...goals.filter(item => item !== 'unsure_help_me_decide'), value as PrimaryGoalOption].slice(-2);
+        : [...goals.filter(item => item !== 'unsure_help_me_decide'), value as PrimaryGoalOption];
       saveChoice({ ...answers, selectedGoals: value === 'unsure_help_me_decide' ? ['unsure_help_me_decide'] : selectedGoals });
       return;
     }
@@ -134,7 +138,7 @@ export default function OnboardingScreen() {
   if (!ready) return <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>;
 
   return <View style={[styles.screen, { paddingBottom: question || step === 'PLAN_GENERATION' ? 0 : insets.bottom }]}>
-    <ScrollView key={step} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <ScrollView key={step} contentContainerStyle={styles.content} showsVerticalScrollIndicator={!!question}>
       {step === 'WELCOME' ? <>
         <ImageBackground source={localImages.onboardingBotanical} style={[styles.welcomeHero, { height: Math.max(300, Math.min(410, windowHeight * 0.47)), paddingTop: insets.top }]} resizeMode="cover">
           <LinearGradient colors={['rgba(19,38,28,0.78)', 'rgba(19,38,28,0.05)', 'rgba(19,38,28,0.05)']} style={styles.welcomeShade}>
@@ -178,7 +182,7 @@ export default function OnboardingScreen() {
             <Text style={styles.planFoot}>This plan uses only your answers. It is cosmetic self-care guidance, not a diagnosis or a promise of skin results.</Text>
           </View>
         </> : question ? <View style={styles.body}>
-          <ImageBackground source={index % 2 ? localImages.editorialRoutine : localImages.onboardingBotanical} style={styles.smallHero} imageStyle={styles.smallHeroImage} />
+          {step !== 'GOALS' && <ImageBackground source={index % 2 ? localImages.editorialRoutine : localImages.onboardingBotanical} style={styles.smallHero} imageStyle={styles.smallHeroImage} />}
           <Text style={styles.eyebrow}>{question.eyebrow}</Text><Text style={styles.title}>{question.title}</Text><Text style={styles.copy}>{question.copy}</Text>
           <View style={styles.options}>{question.choices.map(choice => {
             const selected = step === 'GOALS' ? answers.selectedGoals.includes(choice.value as PrimaryGoalOption) : answers[question.field] === choice.value;

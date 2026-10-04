@@ -8,6 +8,7 @@ import { VerifiedEntitlementStore } from '../services/verified-entitlement-store
 import { ReviewAccessGrant } from '../services/review-access-grant.js';
 import { AppFreeTrial, TrialAccountUnavailableError } from '../services/app-free-trial.js';
 import { TrialStorePreference } from '../services/trial-store-preference.js';
+import { StoreAccessResolver } from '../services/store-access-resolver.js';
 import { SubscriptionVerificationLimiter } from '../services/subscription-verification-limiter.js';
 import { SkinFeelCheckinWriter } from '../services/skin-feel-checkin-writer.js';
 import { requireRecentAuthentication } from './recent-auth.js';
@@ -29,6 +30,11 @@ const trialStorePreference = new TrialStorePreference(
   db,
   userId => new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(userId),
   (userId, verified) => entitlementStore.cache(userId, verified)
+);
+const storeAccessResolver = new StoreAccessResolver(
+  userId => new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(userId),
+  (userId, verified) => entitlementStore.cache(userId, verified),
+  userId => entitlementStore.recentPaidAccess(userId)
 );
 
 /**
@@ -109,11 +115,7 @@ export const verifySubscriptionAccess = onCall(
           return await trialStorePreference.current(request.auth.uid) ?? trialAccess;
         }
       }
-      const verified = await new RevenueCatVerifier(process.env.REVENUECAT_SECRET_API_KEY).verify(request.auth.uid);
-      if (!await entitlementStore.cache(request.auth.uid, verified)) {
-        throw new HttpsError('failed-precondition', 'This account is unavailable.');
-      }
-      return { ...verified, source: 'revenuecat_server' as const };
+      return await storeAccessResolver.current(request.auth.uid, request.data?.purchaseOnly === true);
     } catch (error) {
       if (error instanceof HttpsError) throw error;
       if (error instanceof TrialAccountUnavailableError) {

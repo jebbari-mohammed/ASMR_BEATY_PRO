@@ -22,6 +22,14 @@ export interface VerifiedEntitlement extends UserSubscriptionEntitlement {
   expiresAtMs: number | null;
 }
 
+/** Only transport failures and retryable vendor responses permit a cached read. */
+export class RevenueCatTransientError extends Error {
+  constructor(message: string, readonly status?: number) {
+    super(message);
+    this.name = 'RevenueCatTransientError';
+  }
+}
+
 // These are the App Store and Play subscription identifiers in the current
 // offering. A Test Store lifetime package also exists, but is not sold by the
 // app and must not become a non-expiring production entitlement.
@@ -77,30 +85,52 @@ export class RevenueCatVerifier {
   ) {}
 
   async verify(userId: string): Promise<VerifiedEntitlement> {
-    if (!this.secretApiKey) {
+    // A malformed secret can itself make fetch throw TypeError. Reject that
+    // before the transport catch so configuration errors never use a cache.
+    if (!this.secretApiKey || !/^[\x21-\x7e]+$/.test(this.secretApiKey)) {
       throw new Error('REVENUECAT_SECRET_API_KEY is not configured');
     }
     if (!userId || userId.length > 128 || userId.includes('/')) {
       throw new Error('Invalid authenticated user ID');
     }
 
-    const response = await this.request(
-      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`,
-      {
-        headers: { Authorization: `Bearer ${this.secretApiKey}`, Accept: 'application/json' },
-        signal: AbortSignal.timeout(8000)
+    let response: Response;
+    try {
+      response = await this.request(
+        `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`,
+        {
+          headers: { Authorization: `Bearer ${this.secretApiKey}`, Accept: 'application/json' },
+          signal: AbortSignal.timeout(8000)
+        }
+      );
+    } catch (error) {
+      if (error instanceof TypeError ||
+          (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'))) {
+        throw new RevenueCatTransientError('RevenueCat transport unavailable');
       }
-    );
+      throw error;
+    }
     if (!response.ok) {
+      if (response.status === 429 || (response.status >= 500 && response.status <= 599)) {
+        throw new RevenueCatTransientError(`RevenueCat verification unavailable (${response.status})`, response.status);
+      }
       throw new Error(`RevenueCat verification unavailable (${response.status})`);
     }
 
     const body = (await response.json()) as RevenueCatCustomer;
-    const entitlement = body.subscriber?.entitlements?.asmr_beaty_pro_pro;
-    if (!entitlement || typeof entitlement.purchase_date !== 'string' ||
-        typeof entitlement.product_identifier !== 'string') {
-      return noAccess();
+    if (!body || typeof body !== 'object' || Array.isArray(body) ||
+        !body.subscriber || typeof body.subscriber !== 'object' || Array.isArray(body.subscriber) ||
+        !body.subscriber.entitlements || typeof body.subscriber.entitlements !== 'object' ||
+        Array.isArray(body.subscriber.entitlements) ||
+        (body.subscriber.subscriptions !== undefined &&
+          (typeof body.subscriber.subscriptions !== 'object' ||
+           body.subscriber.subscriptions === null || Array.isArray(body.subscriber.subscriptions)))) {
+      throw new Error('RevenueCat response malformed');
     }
+    const entitlement = body.subscriber?.entitlements?.asmr_beaty_pro_pro;
+    if (!entitlement) return noAccess();
+    if (typeof entitlement !== 'object' || typeof entitlement.purchase_date !== 'string' ||
+        typeof entitlement.product_identifier !== 'string') throw new Error('RevenueCat response malformed');
 
     const nowMs = this.now();
     const candidates: VerifiedEntitlement[] = [];

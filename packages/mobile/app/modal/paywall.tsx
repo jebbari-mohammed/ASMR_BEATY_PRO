@@ -145,6 +145,7 @@ export default function PaywallScreen() {
     try {
       await SubscriptionService.startFreeTrial();
       await refresh();
+      router.replace('/(tabs)/today');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not start free access. Please try again.');
     } finally { setBusy(false); }
@@ -207,6 +208,7 @@ export default function PaywallScreen() {
             <Text style={styles.freeAccessEyebrow}>YOUR FREE ACCESS IS OPEN</Text>
             <Text style={styles.freeAccessTitle}>Stay with your ritual.</Text>
             <Text style={styles.freeAccessCopy}>You can choose a membership now to keep your routine after your ten free days. The store will show the price and any eligible offer before you confirm.</Text>
+            <Pressable accessibilityRole="button" onPress={() => router.replace('/(tabs)/today')} style={styles.continueRitual}><Text style={styles.continueRitualText}>Continue my ritual</Text><Ionicons name="arrow-forward" size={17} color={colors.primary} /></Pressable>
           </View>}
           {completedAppTrial && <View style={styles.freeAccessCard}>
             <Text style={styles.freeAccessEyebrow}>YOUR FREE ACCESS IS COMPLETE</Text>
@@ -289,5 +291,7 @@ const styles = StyleSheet.create({
   freeAccessCard: { borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#D8DBCF', paddingVertical: 20, marginBottom: 24 },
   freeAccessEyebrow: { color: colors.goldDark, fontSize: 10, fontWeight: '800', letterSpacing: 1.7 },
   freeAccessTitle: { color: colors.primary, fontSize: 24, lineHeight: 29, fontWeight: '700', marginTop: 7 },
-  freeAccessCopy: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 7 }
+  freeAccessCopy: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 7 },
+  continueRitual: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginTop: 10 },
+  continueRitualText: { color: colors.primary, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' }
 });

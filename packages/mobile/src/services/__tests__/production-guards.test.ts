@@ -490,7 +490,13 @@ test('restore reports only an actual store membership', async () => {
     await expect(SubscriptionService.restorePurchases()).resolves.toBe(false);
     mockVerify.mockResolvedValueOnce({ data: { isPro: true, source: 'app_trial' } });
     await expect(SubscriptionService.restorePurchases()).resolves.toBe(false);
-    mockVerify.mockResolvedValueOnce({ data: { isPro: true, status: 'active', tier: 'PRO' } });
+    mockVerify.mockResolvedValueOnce({ data: {
+      isPro: true, source: 'revenuecat_cache', expiresAtMs: Date.now() + 60_000
+    } });
+    await expect(SubscriptionService.restorePurchases()).resolves.toBe(false);
+    mockVerify.mockResolvedValueOnce({ data: {
+      isPro: true, source: 'revenuecat_server', status: 'active', tier: 'PRO', expiresAtMs: Date.now() + 60_000
+    } });
     await expect(SubscriptionService.restorePurchases()).resolves.toBe(true);
     expect(mockVerify).toHaveBeenCalledWith({ purchaseOnly: true });
   } finally {
@@ -518,6 +524,29 @@ test('exact free access does not require store configuration or start silently',
     REVENUECAT_CONFIG.appleApiKey = originalKey;
     mockCurrentUser = null;
   }
+});
+
+test('a malformed paid response cannot open the app gate', async () => {
+  mockCurrentUser = { uid: 'paid-user', emailVerified: true };
+  mockVerify.mockResolvedValueOnce({ data: { isPro: true, source: 'revenuecat_server' } });
+  await expect(SubscriptionService.verifyAccess()).resolves.toMatchObject({ active: false });
+  mockVerify.mockResolvedValueOnce({ data: {
+    isPro: true, source: 'client_cache', expiresAtMs: Date.now() + 60_000
+  } });
+  await expect(SubscriptionService.verifyAccess()).resolves.toMatchObject({ active: false });
+  mockCurrentUser = null;
+});
+
+test('a bounded server cache response opens ordinary access', async () => {
+  mockCurrentUser = { uid: 'paid-user', emailVerified: true };
+  const expiresAtMs = Date.now() + 60_000;
+  mockVerify.mockResolvedValueOnce({ data: {
+    isPro: true, source: 'revenuecat_cache', expiresAtMs
+  } });
+  await expect(SubscriptionService.verifyAccess()).resolves.toEqual({
+    active: true, source: 'revenuecat_cache', expiresAtMs
+  });
+  mockCurrentUser = null;
 });
 
 test('free access rejects malformed server status and unverified accounts', async () => {

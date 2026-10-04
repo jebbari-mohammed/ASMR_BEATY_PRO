@@ -4,7 +4,7 @@ This document describes the routine, calendar, shelf, and reminder release. Phot
 
 ## Products
 
-The app uses a hard paywall after adult onboarding, Firebase email verification, and account sign-in. It displays the localized prices returned by the store through RevenueCat. There is no trial promised in the app. The intended US prices are $39.99 per year and $6.99 per month; the store controls the final price and territory availability.
+After adult onboarding, Firebase email verification, and account sign-in, a member can explicitly start one exact ten-day period of free app access. It does not start store billing or charge automatically. When it ends, the hard paywall requires an active store subscription. The paywall displays localized prices returned by the store through RevenueCat. The intended US prices are $39.99 per year and $6.99 per month; the store controls the final price and territory availability.
 
 | Store | Annual product | Monthly product |
 | --- | --- | --- |
@@ -23,13 +23,15 @@ The deployed verifier checks the exact four store product identifiers above, a f
 4. Restore asks the store for purchases, then repeats server verification. Cancellation, expiry, refund, account switch, and grace period must be tested on signed builds before launch.
 5. The RevenueCat webhook authenticates with its bearer secret and reconciles current subscriber state with RevenueCat. Webhook payloads alone are not trusted to grant Pro.
 
-If packages cannot load, the paywall remains closed and offers retry, restore, account switching, and legal links. If the store accepts payment but server verification has not caught up, the user can restore; the app does not grant local access as a shortcut.
+If store packages cannot load, paid purchase remains unavailable, but an eligible member can still start free app access. The paywall offers retry, restore, account switching, and legal links. If the store accepts payment but server verification has not caught up, the user can restore; the app does not grant local access as a shortcut.
+
+For ordinary access checks, a transport failure or RevenueCat HTTP 429/5xx response can use a server-verified paid record only if its store period remains unexpired, the verification is less than six hours old, the Auth account is verified and enabled, and deletion is not in progress. HTTP 4xx errors other than 429, configuration faults, and malformed responses cannot use this fallback. Purchase and restore always require a fresh store check; an explicit refund or no-access result clears the old cache. The app rechecks access on launch and foreground as before. This six-hour limit applies to the callable fallback, not to Firestore's separate paid-data rule: Firestore relies on the server-owned record's finite store expiry and webhook reconciliation. A refund that cannot be reconciled during an outage may therefore retain direct data access until the cached store expiry.
 
 ## Release gates
 
 - The first Apple subscription group and both products are still marked **Prepare for Submission** in App Store Connect. Apple requires the first group to be submitted with an app version. Annual/monthly descriptions and group localization now describe the shipped routine, calendar, shelf, and reminders; review screenshots and first-version submission remain open.
 - Google Play annual and monthly base plans are active, but closed-test purchases on a final signed Android App Bundle remain unverified.
-- Verify purchase, restore, cancellation, expiration, refund, grace period, reinstall, account switch, and displayed localized prices on both stores with the deployed backend.
+- Verify the exact ten-day free period, purchase, restore, cancellation, expiration, refund, grace period, reinstall, account switch, and displayed localized prices on both stores with the deployed backend.
 - The RevenueCat webhook destination and server secret were confirmed after deployment. Never put server secrets in the mobile bundle.
 
 See [release-checklist.md](release-checklist.md) for the current verification gates.
