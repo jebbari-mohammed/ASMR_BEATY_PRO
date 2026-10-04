@@ -10,5 +10,7 @@ test('every saved skin-feel choice offers a brief, non-diagnostic action', () =>
     expect(copy).not.toMatch(/cure|treat|diagnos|guarantee|buy|purchase/i);
   }
   expect(skinFeelGuidance('sensitive')).toMatch(/stop using a product|dermatologist/i);
+  expect(skinFeelGuidance('sensitive')).toMatch(/prescriber/i);
+  expect(skinFeelGuidance('dry_tight')).toMatch(/prescriber/i);
   expect(skinFeelGuidance('comfortable')).toMatch(/no need to add more products/i);
 });

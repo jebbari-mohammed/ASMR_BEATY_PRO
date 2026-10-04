@@ -7,7 +7,7 @@ import { Header } from '../../src/components/Header';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
 import { localImages } from '../../src/theme/images';
 import { colors } from '../../src/theme/tokens';
-import { RoutineCategory, RoutinePeriod, RoutineService, RoutineStep } from '../../src/services/routine-service';
+import { activeRoutineSteps, routineAvailability, RoutineCategory, RoutinePeriod, RoutineService, RoutineStep } from '../../src/services/routine-service';
 
 const categories: RoutineCategory[] = ['Cleanse', 'Hydrate', 'Treat', 'Protect', 'Other'];
 
@@ -96,20 +96,41 @@ export default function RoutineScreen() {
     ]);
   }
 
+  function changePaused(step: RoutineStep) {
+    if (saving || refreshing || loading || loadError) return;
+    const uid = auth().currentUser?.uid;
+    const epoch = identityEpoch.current;
+    const apply = () => {
+      if (!uid || auth().currentUser?.uid !== uid || identityEpoch.current !== epoch) return;
+      void persist(steps.map(item => item.id === step.id ? { ...item, paused: !step.paused } : item));
+    };
+    if (step.paused) { apply(); return; }
+    const sunNote = step.category === 'Protect'
+      ? 'If sunscreen irritates you, use shade and protective clothing while you seek another option. '
+      : '';
+    Alert.alert('Pause this step?',
+      `It will leave your daily checklist, but stay here to resume. ${sunNote}If this step involves a prescription, ask the prescribing clinician before changing how you use it.`, [
+        { text: 'Keep active', style: 'cancel' },
+        { text: 'Pause step', onPress: apply }
+      ]);
+  }
+
   function section(period: RoutinePeriod) {
     const items = steps.filter(step => step.period === period);
     const morning = period === 'morning';
     return <View style={styles.section} key={period}>
       <View style={styles.sectionHeading}>
         <View style={styles.sectionTitleRow}><Ionicons name={morning ? 'sunny-outline' : 'moon-outline'} size={21} color={morning ? colors.goldDark : colors.primary} /><Text style={styles.sectionTitle}>{morning ? 'Morning' : 'Evening'}</Text></View>
-        <Text style={styles.count}>{items.length} {items.length === 1 ? 'step' : 'steps'}</Text>
+        <Text style={styles.count}>{activeRoutineSteps(items).length} active{items.some(step => step.paused) ? ` · ${items.filter(step => step.paused).length} paused` : ''}</Text>
       </View>
-      {items.map((step, index) => <View key={step.id} style={styles.step}>
+      {items.map((step, index) => <View key={step.id} style={[styles.step, step.paused && styles.pausedStep]}>
         <View style={styles.number}><Text style={styles.numberText}>{index + 1}</Text></View>
         <View style={styles.stepBody}>
           <Text style={styles.category}>{step.category.toUpperCase()}</Text>
           <Text style={styles.stepName}>{step.name}</Text>
           {!!step.detail && <Text style={styles.stepDetail}>{step.detail}</Text>}
+          {step.paused && <Text style={styles.pausedLabel}>PAUSED · Not shown on Today</Text>}
+          <Pressable accessibilityRole="button" accessibilityLabel={`${step.paused ? 'Resume' : 'Pause'} ${step.name} in your daily routine`} accessibilityState={{ disabled: refreshing || saving }} disabled={refreshing || saving} onPress={() => changePaused(step)} style={styles.pauseButton}><Ionicons name={step.paused ? 'play-circle-outline' : 'pause-circle-outline'} size={18} color={colors.primary} /><Text style={styles.pauseText}>{step.paused ? 'Resume step' : 'Pause step'}</Text></Pressable>
         </View>
         <Pressable accessibilityLabel={`Edit ${step.name}`} disabled={refreshing || saving} onPress={() => setDraft({ ...step })} style={styles.editButton}><Ionicons name="create-outline" size={21} color={colors.primary} /></Pressable>
       </View>)}
@@ -129,9 +150,10 @@ export default function RoutineScreen() {
       <ImageBackground source={localImages.editorialRoutine} style={styles.hero} imageStyle={styles.heroImage}>
         <View style={styles.heroShade}><Text style={styles.heroEyebrow}>YOUR DAILY PLAN</Text><Text style={styles.heroTitle}>A ritual that fits you.</Text></View>
       </ImageBackground>
-      <Text style={styles.intro}>Begin with gentle steps, then add or edit what you actually use. Follow product labels and pause anything that irritates your skin.</Text>
+      <Text style={styles.intro}>Begin with gentle steps, then add or edit what you actually use. If a step no longer feels comfortable, pause it here without losing past check-ins.</Text>
       {!sameAccount || loading ? <ActivityIndicator style={{ marginTop: 38 }} color={colors.primary} /> : loadError ? <View style={styles.error}><Text style={styles.errorTitle}>Could not load your routine</Text><Text style={styles.errorCopy}>{__DEV__ ? loadError : 'Check your connection and try again.'}</Text><Pressable accessibilityRole="button" onPress={() => setReloadRevision(value => value + 1)}><Text style={styles.retryText}>Try again</Text></Pressable></View> : dataIsCurrent ? <>
         {refreshing && <Text style={styles.refreshText}>Refreshing your routine…</Text>}
+        {routineAvailability(steps) === 'all_paused' && <View style={styles.allPaused}><Text style={styles.allPausedTitle}>Every step is paused</Text><Text style={styles.allPausedCopy}>Nothing will appear in your daily checklist until you resume a step or add a new one.</Text></View>}
         {section('morning')}
         {section('evening')}
       </> : <ActivityIndicator style={{ marginTop: 38 }} color={colors.primary} />}
@@ -172,6 +194,9 @@ const styles = StyleSheet.create({
   step: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: 'white', borderRadius: 16, borderColor: colors.border, borderWidth: 1, padding: 15, marginBottom: 8 },
   number: { width: 27, height: 27, borderRadius: 14, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginRight: 12 }, numberText: { color: colors.primary, fontWeight: '700', fontSize: 12 },
   stepBody: { flex: 1 }, category: { color: colors.goldDark, fontWeight: '800', fontSize: 9, letterSpacing: 1 }, stepName: { color: colors.textPrimary, fontSize: 15, fontWeight: '700', marginTop: 4 }, stepDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 17, marginTop: 4 },
+  pausedStep: { backgroundColor: '#F8F8F5' }, pausedLabel: { color: colors.textSecondary, fontSize: 10, fontWeight: '700', marginTop: 9, letterSpacing: 0.5 },
+  pauseButton: { minHeight: 44, alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }, pauseText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
+  allPaused: { backgroundColor: colors.primarySoft, borderRadius: 15, padding: 15, marginTop: 13 }, allPausedTitle: { color: colors.primary, fontSize: 15, fontWeight: '700' }, allPausedCopy: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 },
   editButton: { padding: 7 }, addButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11 }, addText: { color: colors.primary, fontWeight: '700', fontSize: 13 },
   editor: { backgroundColor: '#F1F5F0', borderColor: '#D9E4D9', borderWidth: 1, borderRadius: 20, padding: 18, marginTop: 20 }, editorTitle: { color: colors.primary, fontSize: 20, fontWeight: '700', marginBottom: 13 },
   modalRoot: { flex: 1, backgroundColor: colors.background }, modalContent: { padding: 20, paddingBottom: 44 },

@@ -11,7 +11,19 @@ export type RoutineStep = {
   category: RoutineCategory;
   name: string;
   detail: string;
+  // A paused step remains editable but is omitted from the daily checklist.
+  // Older saved routines have no paused field and remain active.
+  paused?: boolean;
 };
+
+export function activeRoutineSteps<T extends RoutineStep>(steps: T[]): T[] {
+  return steps.filter(step => step.paused !== true);
+}
+
+export function routineAvailability(steps: RoutineStep[]): 'empty' | 'all_paused' | 'active' {
+  if (steps.length === 0) return 'empty';
+  return activeRoutineSteps(steps).length === 0 ? 'all_paused' : 'active';
+}
 
 export const STARTER_STEPS: RoutineStep[] = [
   { id: 'm1', period: 'morning', category: 'Cleanse', name: 'Gentle cleanse', detail: 'Use a cleanser you already tolerate, or rinse with water.' },
@@ -33,7 +45,8 @@ function validStep(step: unknown): step is RoutineStep {
     && (value.period === 'morning' || value.period === 'evening')
     && ['Cleanse', 'Hydrate', 'Treat', 'Protect', 'Other'].includes(String(value.category))
     && typeof value.name === 'string' && value.name.trim().length > 0 && value.name.length <= 60
-    && typeof value.detail === 'string' && value.detail.length <= 180;
+    && typeof value.detail === 'string' && value.detail.length <= 180
+    && (value.paused === undefined || typeof value.paused === 'boolean');
 }
 
 export class RoutineService {

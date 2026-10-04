@@ -1,4 +1,4 @@
-import { RoutineService, STARTER_STEPS } from '../routine-service';
+import { activeRoutineSteps, routineAvailability, RoutineService, STARTER_STEPS } from '../routine-service';
 import { RoutineLogCorrectionError, RoutineLogService } from '../routine-log-service';
 import { OnboardingService } from '../onboarding-machine';
 
@@ -68,6 +68,41 @@ test('a new account receives its previewed short routine before editing anything
   expect(OnboardingService.getStarterPreferences).toHaveBeenCalledWith('qa-user');
   expect(steps).toHaveLength(4);
   expect(steps[0]?.name).toBe('Moisturize');
+});
+
+test('pausing a step is reversible and does not erase past completion data', async () => {
+  const routine = [
+    { ...STARTER_STEPS[0], paused: true },
+    STARTER_STEPS[1],
+    { ...STARTER_STEPS[2], paused: false }
+  ];
+  const completedIds = ['m1', 'm2'];
+  expect(activeRoutineSteps(routine).map(step => step.id)).toEqual(['m2', 'm3']);
+  expect(activeRoutineSteps(routine).filter(step => completedIds.includes(step.id)).map(step => step.id)).toEqual(['m2']);
+  expect(activeRoutineSteps(routine.map(step => step.id === 'm1' ? { ...step, paused: false } : step)).map(step => step.id)).toEqual(['m1', 'm2', 'm3']);
+  expect(completedIds).toEqual(['m1', 'm2']);
+});
+
+test('older saved steps remain active, and only booleans can mark a step paused', async () => {
+  mockGet.mockResolvedValueOnce({ exists: () => true, data: () => ({ steps: STARTER_STEPS }) });
+  const legacy = await RoutineService.get();
+  expect(activeRoutineSteps(legacy)).toHaveLength(STARTER_STEPS.length);
+
+  mockGet.mockResolvedValueOnce({ exists: () => true, data: () => ({ steps: [{ ...STARTER_STEPS[0], paused: 'yes' }] }) });
+  await expect(RoutineService.get()).rejects.toThrow('Your saved routine could not be read.');
+  await expect(RoutineService.save([{ ...STARTER_STEPS[0], paused: 'yes' } as never], 'qa-user'))
+    .rejects.toThrow('A routine needs 1 to 20 valid, unique steps.');
+  expect(mockSet).not.toHaveBeenCalled();
+});
+
+test('all paused steps leave no daily checklist and save without deleting routine steps', async () => {
+  const paused = STARTER_STEPS.map(step => ({ ...step, paused: true }));
+  expect(activeRoutineSteps(paused)).toEqual([]);
+  expect(routineAvailability(paused)).toBe('all_paused');
+  expect(routineAvailability([])).toBe('empty');
+  expect(routineAvailability(STARTER_STEPS)).toBe('active');
+  await RoutineService.save(paused, 'qa-user');
+  expect(mockSet).toHaveBeenCalledWith({ steps: paused, updatedAt: expect.any(Number) });
 });
 
 test('a routine read cannot use another account’s starter preferences after an auth switch', async () => {

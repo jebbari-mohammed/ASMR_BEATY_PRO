@@ -11,7 +11,7 @@ import { Header } from '../../src/components/Header';
 import { Card } from '../../src/components/Card';
 import { DisclaimerBar } from '../../src/components/DisclaimerBar';
 import { RoutineLogCorrectionError, RoutineLogService } from '../../src/services/routine-log-service';
-import { RoutineService, RoutineStep, STARTER_STEPS } from '../../src/services/routine-service';
+import { activeRoutineSteps, routineAvailability, RoutineService, RoutineStep, STARTER_STEPS } from '../../src/services/routine-service';
 import { OnboardingService } from '../../src/services/onboarding-machine';
 import { buildStarterPlan, StarterPlan } from '../../src/services/personalized-starter';
 import { SkinFeel, SkinFeelCheckinService } from '../../src/services/skin-feel-checkin-service';
@@ -281,7 +281,7 @@ export default function TodayScreen() {
     if (!uid || readyIdentity.current?.uid !== uid || readyIdentity.current.day !== day) return false;
     const sessionEpoch = identityEpoch.current;
     const step = steps.find(item => item.id === id);
-    if (!step || loading || refreshing || loadError) return false;
+    if (!step || step.paused || loading || refreshing || loadError) return false;
     const previous = pendingSteps.current.get(id);
     const completed = !(previous?.day === day ? previous.completed : step.completed);
     const operation = ++operationId.current;
@@ -320,7 +320,7 @@ export default function TodayScreen() {
   function openPlayer(period: 'morning' | 'evening') {
     if (readyIdentity.current?.uid !== auth().currentUser?.uid || readyIdentity.current?.day !== localDayKey()) return;
     if (loading || refreshing || loadError) return;
-    const periodSteps = steps.filter(step => step.period === period);
+    const periodSteps = activeRoutineSteps(steps).filter(step => step.period === period);
     if (!periodSteps.length) return;
     const firstIncomplete = periodSteps.findIndex(step => !step.completed);
     setPlayerIndex(firstIncomplete < 0 ? 0 : firstIncomplete);
@@ -328,7 +328,7 @@ export default function TodayScreen() {
   }
 
   function nextPlayerStep() {
-    const count = steps.filter(step => step.period === playerPeriod).length;
+    const count = activeRoutineSteps(steps).filter(step => step.period === playerPeriod).length;
     if (playerIndex + 1 >= count) setPlayerPeriod(null);
     else setPlayerIndex(index => index + 1);
   }
@@ -336,7 +336,7 @@ export default function TodayScreen() {
   function completePlayerStep() {
     if (readyIdentity.current?.uid !== auth().currentUser?.uid || readyIdentity.current?.day !== localDayKey()) return;
     if (refreshing) return;
-    const current = steps.filter(step => step.period === playerPeriod)[playerIndex];
+    const current = activeRoutineSteps(steps).filter(step => step.period === playerPeriod)[playerIndex];
     if (!current) return;
     if (current.completed || toggleStep(current.id)) nextPlayerStep();
   }
@@ -369,10 +369,13 @@ export default function TodayScreen() {
     });
   }
 
-  const morningSteps = steps.filter(step => step.period === 'morning');
-  const eveningSteps = steps.filter(step => step.period === 'evening');
-  const completedCount = steps.filter(step => step.completed).length;
-  const totalCount = steps.length;
+  const activeSteps = activeRoutineSteps(steps);
+  const routineState = routineAvailability(steps);
+  const pausedCount = steps.length - activeSteps.length;
+  const morningSteps = activeSteps.filter(step => step.period === 'morning');
+  const eveningSteps = activeSteps.filter(step => step.period === 'evening');
+  const completedCount = activeSteps.filter(step => step.completed).length;
+  const totalCount = activeSteps.length;
   const progressPercent = totalCount ? Math.round((completedCount / totalCount) * 100) : 0;
   const morningRemaining = morningSteps.filter(step => !step.completed).length;
   const eveningRemaining = eveningSteps.filter(step => !step.completed).length;
@@ -382,7 +385,7 @@ export default function TodayScreen() {
   const nextSteps = nextPeriod === 'morning' ? morningSteps : eveningSteps;
   const nextRemaining = nextPeriod === 'morning' ? morningRemaining : eveningRemaining;
   const nextStarted = nextSteps.some(step => step.completed);
-  const playerSteps = steps.filter(step => step.period === playerPeriod);
+  const playerSteps = activeSteps.filter(step => step.period === playerPeriod);
   const playerStep = playerSteps[playerIndex];
   const liveUid = auth().currentUser?.uid ?? null;
   const liveDay = localDayKey();
@@ -437,9 +440,9 @@ export default function TodayScreen() {
         {refreshing && <View style={styles.refreshNotice} accessibilityRole="progressbar" accessibilityLabel="Updating your ritual"><ActivityIndicator size="small" color={colors.primary} /><Text style={styles.refreshText}>Updating your ritual</Text></View>}
         {showSyncNotice && <Text accessibilityLiveRegion="polite" style={styles.syncNotice}>Changes on this device are waiting to sync.</Text>}
         {syncError && <Text accessibilityRole="alert" style={styles.syncError}>{syncError}</Text>}
-        {totalCount === 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Add your first ritual step" onPress={() => router.push('/(tabs)/routine')} style={styles.dailyComplete}>
-          <Ionicons name="add-circle-outline" size={28} color={colors.primary} />
-          <View style={styles.dailyActionCopy}><Text style={styles.dailyCompleteTitle}>Start with one small step.</Text><Text style={styles.dailyCompleteDetail}>Add a morning or evening step to begin your ritual.</Text></View>
+        {totalCount === 0 ? <Pressable accessibilityRole="button" accessibilityLabel={routineState === 'all_paused' ? 'Review and resume your paused routine steps' : 'Add your first ritual step'} onPress={() => router.push('/(tabs)/routine')} style={styles.dailyComplete}>
+          <Ionicons name={routineState === 'all_paused' ? 'pause-circle-outline' : 'add-circle-outline'} size={28} color={colors.primary} />
+          <View style={styles.dailyActionCopy}><Text style={styles.dailyCompleteTitle}>{routineState === 'all_paused' ? 'Your steps are paused.' : 'Start with one small step.'}</Text><Text style={styles.dailyCompleteDetail}>{routineState === 'all_paused' ? 'Review your routine and resume a step when you are ready.' : 'Add a morning or evening step to begin your ritual.'}</Text></View>
           <Ionicons name="arrow-forward" size={20} color={colors.primary} />
         </Pressable> : nextPeriod ? <Pressable
           accessibilityRole="button"
@@ -473,7 +476,7 @@ export default function TodayScreen() {
                 <Text style={styles.streakBadgeText}>TODAY'S PROGRESS</Text>
               </View>
               <View style={styles.progressCounter}>
-                <Text style={styles.counterText}>{completedCount}/{totalCount} Completed</Text>
+                <Text style={styles.counterText}>{totalCount ? `${completedCount}/${totalCount} Completed` : 'No active steps'}</Text>
               </View>
             </View>
 
@@ -481,7 +484,7 @@ export default function TodayScreen() {
               <View style={styles.progressBarTrack}>
                 <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
               </View>
-              <Text style={styles.percentText}>{progressPercent}%</Text>
+              <Text style={styles.percentText}>{totalCount ? `${progressPercent}%` : '—'}</Text>
             </View>
 
             <View style={styles.milestoneRow}>
@@ -493,6 +496,8 @@ export default function TodayScreen() {
             </View>
           </LinearGradient>
         </Card>
+
+        {pausedCount > 0 && <Pressable accessibilityRole="button" accessibilityLabel={`Review ${pausedCount} paused ${pausedCount === 1 ? 'step' : 'steps'}`} onPress={() => router.push('/(tabs)/routine')} style={styles.pausedNotice}><Ionicons name="pause-circle-outline" size={19} color={colors.primary} /><Text style={styles.pausedNoticeText}>{pausedCount} {pausedCount === 1 ? 'step is' : 'steps are'} paused. Review or resume in Your routine.</Text><Ionicons name="arrow-forward" size={17} color={colors.primary} /></Pressable>}
 
         {/* Morning Ritual Section */}
         <View style={styles.sectionHeaderRow}>
@@ -615,7 +620,7 @@ export default function TodayScreen() {
                 {skinFeel && <Pressable accessibilityRole="button" accessibilityState={{ disabled: checkinSaving }} disabled={checkinSaving} onPress={() => changeSkinFeel(null)} style={styles.checkinRemove}><Text style={styles.checkinRemoveText}>Remove today’s check-in</Text></Pressable>}
                 {(checkinSaving || checkinPendingWrites) && <Text accessibilityLiveRegion="polite" style={styles.checkinStatus}>{checkinSaving ? 'Saving your check-in…' : 'Waiting to sync…'}</Text>}
               </View>
-              {skinFeel && <View style={styles.checkinGuidance}><Ionicons name="heart-outline" size={18} color={colors.primary} /><Text style={styles.checkinGuidanceText}>{skinFeelGuidance(skinFeel)}</Text></View>}
+              {skinFeel && <View style={styles.checkinGuidance}><Ionicons name="heart-outline" size={18} color={colors.primary} /><View style={styles.checkinGuidanceCopy}><Text style={styles.checkinGuidanceText}>{skinFeelGuidance(skinFeel)}</Text>{(skinFeel === 'sensitive' || skinFeel === 'dry_tight') && <Pressable accessibilityRole="button" accessibilityLabel="Review or pause a routine step" onPress={() => router.push('/(tabs)/routine')} style={styles.reviewRoutineButton}><Text style={styles.reviewRoutineText}>Review or pause a step</Text><Ionicons name="arrow-forward" size={15} color={colors.primary} /></Pressable>}</View></View>}
             </> : null}
           {checkinError && <Text accessibilityRole="alert" style={styles.checkinError}>{checkinError}</Text>}
           {checkinError && !checkinIdentity && <Pressable accessibilityRole="button" onPress={() => setReloadRevision(revision => revision + 1)} style={styles.retryButton}><Text style={styles.retryText}>Try again</Text></Pressable>}
@@ -635,7 +640,7 @@ export default function TodayScreen() {
 
         <DisclaimerBar showAffiliate={false} />
       </ScrollView>
-      <Modal visible={dataIsCurrent && playerPeriod !== null} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setPlayerPeriod(null)}>
+      <Modal visible={dataIsCurrent && playerPeriod !== null && !!playerStep} animationType="slide" presentationStyle="fullScreen" onRequestClose={() => setPlayerPeriod(null)}>
         <View style={styles.playerScreen}>
           <ScrollView style={styles.playerScroll} contentContainerStyle={{ paddingBottom: 18 }}>
             <ImageBackground source={playerPeriod === 'morning' ? localImages.editorialHero : localImages.editorialRoutine} style={[styles.playerHero, { height: Math.min(300, Math.max(225, windowHeight * 0.34)), paddingTop: insets.top + 16 }]} resizeMode="cover">
@@ -693,6 +698,8 @@ const styles = StyleSheet.create({
   dailyComplete: { minHeight: 88, flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, padding: 18, backgroundColor: colors.primarySoft, marginBottom: spacing.md },
   dailyCompleteTitle: { color: colors.primary, fontSize: 18, fontWeight: '700' },
   dailyCompleteDetail: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 4 },
+  pausedNotice: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 12, paddingVertical: 8, marginBottom: spacing.md },
+  pausedNoticeText: { flex: 1, color: colors.primary, fontSize: 12, lineHeight: 17, fontWeight: '600' },
   retryButton: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center', paddingRight: 16 },
   retryText: { color: colors.primary, fontSize: 13, fontWeight: '700' },
   syncError: { color: '#A64032', backgroundColor: colors.terracottaLight, borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 18 },
@@ -730,7 +737,10 @@ const styles = StyleSheet.create({
   checkinRemoveText: { color: colors.primary, fontSize: 12, textDecorationLine: 'underline' },
   checkinStatus: { color: colors.textSecondary, fontSize: 11 },
   checkinGuidance: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', backgroundColor: colors.primarySoft, borderRadius: 13, padding: 12, marginTop: 11 },
-  checkinGuidanceText: { flex: 1, color: colors.primary, fontSize: 12, lineHeight: 18 },
+  checkinGuidanceCopy: { flex: 1 },
+  checkinGuidanceText: { color: colors.primary, fontSize: 12, lineHeight: 18 },
+  reviewRoutineButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 5, alignSelf: 'flex-start', marginTop: 4 },
+  reviewRoutineText: { color: colors.primary, fontSize: 12, fontWeight: '700' },
   checkinLoader: { marginVertical: 12 },
   checkinError: { color: '#A64032', fontSize: 12, lineHeight: 18, marginTop: 8 },
   checkinPrivacy: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 6 },

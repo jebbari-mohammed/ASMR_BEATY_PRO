@@ -131,7 +131,7 @@ export default function ProgressScreen() {
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.eyebrow}>YOUR REAL RECORD</Text>
       <Text style={styles.title}>Progress, at your pace.</Text>
-      <Text style={styles.subtitle}>A record of the ritual steps you marked complete. Your skin can change for many reasons; this view tracks consistency only.</Text>
+      <Text style={styles.subtitle}>A record of the ritual steps you marked complete. Pausing a step later does not erase its past check-ins. Your skin can change for many reasons; this view tracks consistency only.</Text>
       {!sameAccount || loading ? <ActivityIndicator style={{ marginTop: 50 }} color={colors.primary} /> : error ? <View style={styles.empty}><Text style={styles.emptyTitle}>Could not load your record</Text><Text style={styles.emptyCopy}>Check your connection and try again.</Text><Pressable style={styles.retryButton} accessibilityRole="button" onPress={() => setReloadRevision(value => value + 1)}><Text style={styles.retryText}>Try again</Text></Pressable></View> : dataIsCurrent ? <>
         {refreshing && <Text style={styles.refreshText}>Refreshing your record…</Text>}
         <View style={styles.summary}>
