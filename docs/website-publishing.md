@@ -42,3 +42,12 @@ under `/ASMR_BEATY_PRO/` rather than the host root, so search crawlers would
 not use it. Submit the sitemap through the verified URL-prefix property in
 Google Search Console. Keep the `google3e206f76b54dc34c.html` file in the
 site root so ownership verification remains valid.
+
+On October 3, 2026, Search Console's verified URL-prefix property showed the
+correct full sitemap URL as **Couldn't fetch**, with no last-read date and zero
+discovered pages. The same URL returned HTTP 200 with `application/xml` to a
+normal client and a Googlebot user agent, and its six URLs parsed correctly.
+The Page indexing and Performance reports were still processing. Recheck the
+Sitemaps report and use Search Console's live URL inspection before claiming
+Google has fetched or indexed the site. A sitemap submission is a discovery
+hint, not proof of indexing or ranking.
