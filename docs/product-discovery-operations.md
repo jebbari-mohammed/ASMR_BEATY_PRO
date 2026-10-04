@@ -73,12 +73,12 @@ disclosure, and allowed tracking parameters. There is currently no approved
 partner host or commissioned product in the bundled list.
 
 As of October 4, 2026, the owner has an Impact account with verified ASMR Beauty
-Pro social properties and the live website linked in its public profile. Its
-Ulta direct-signup applications were declined by Ulta; Impact showed no reason
-in the notifications. The separate Impact Marketplace application was also
-declined. Do not create or publish Ulta tracking links unless Ulta later
-approves a contract and explicitly permits product deep links. The clean,
-noncommissioned product links remain available in the meantime.
+Pro social properties and the live website linked in its account and public
+profile. Its Ulta direct-signup applications were declined by Ulta; Impact
+showed no reason in the notifications. The separate Impact Marketplace
+application was also declined. Do not create or publish Ulta tracking links
+unless Ulta later approves a contract and explicitly permits product deep
+links. The clean, noncommissioned product links remain available in the meantime.
 
 ### Generate links from Impact
 
