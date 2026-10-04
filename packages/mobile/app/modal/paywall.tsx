@@ -39,6 +39,7 @@ export default function PaywallScreen() {
   const [freeTrials, setFreeTrials] = useState<Record<string, string>>({});
   const [appTrial, setAppTrial] = useState<FreeTrialStatus | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [purchaseIntent, setPurchaseIntent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [storeLoading, setStoreLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -56,6 +57,7 @@ export default function PaywallScreen() {
     const isCurrent = () => loadId.current === requestId && auth().currentUser?.uid === requestedForUid;
     setLoading(true);
     setStoreLoading(true);
+    setPurchaseIntent(false);
     setError(null);
     setStoreError(null);
     const statusTask = SubscriptionService.getFreeTrialStatus().then(status => {
@@ -111,6 +113,8 @@ export default function PaywallScreen() {
   const plan = packages.find((item) => item.identifier === selected);
   const selectedTrial = plan ? trialPeriodLabel(freeTrials[plan.identifier] ?? null) : null;
   const canStartAppTrial = appTrial?.eligible === true;
+  const freeAccessIsPrimary = canStartAppTrial && (!purchaseIntent || !plan);
+  const showPlanSelection = !canStartAppTrial || purchaseIntent;
   const activeAppTrial = appTrial?.active === true;
   const completedAppTrial = appTrial?.eligible === false && appTrial.active === false && !!appTrial.endsAt;
   const annual = packages.find((item) => item.packageType === 'ANNUAL');
@@ -216,9 +220,10 @@ export default function PaywallScreen() {
             <Text style={styles.freeAccessCopy}>Your plan and record are saved. Choose a membership to continue.</Text>
           </View>}
           <Text style={styles.sectionLabel}>{canStartAppTrial ? 'MEMBERSHIP NOW OR AFTER FREE ACCESS' : 'CHOOSE YOUR MEMBERSHIP'}</Text>
+          {canStartAppTrial && <Text style={styles.choiceHint}>Tap a plan to subscribe now, or take ten days of free access first.</Text>}
           {storeLoading ? <ActivityIndicator style={{ margin: 25 }} color={colors.primary} /> : packages.map((pkg) => (
-            <Pressable key={pkg.identifier} accessibilityRole="radio" accessibilityState={{ selected: selected === pkg.identifier }} accessibilityLabel={`${planTitle(pkg)}, ${freeTrials[pkg.identifier] ? `${trialPeriodLabel(freeTrials[pkg.identifier])} free, then ` : ''}${pkg.product.priceString} per ${periodLabel(pkg)}${pkg.packageType === 'ANNUAL' && savings !== null ? `, save ${savings} percent compared with monthly` : ''}`} onPress={() => setSelected(pkg.identifier)} style={[styles.plan, selected === pkg.identifier && styles.planSelected]}>
-              <View style={[styles.radio, selected === pkg.identifier && styles.radioSelected]}>{selected === pkg.identifier && <View style={styles.radioCenter} />}</View>
+            <Pressable key={pkg.identifier} accessibilityRole="radio" accessibilityState={{ selected: showPlanSelection && selected === pkg.identifier }} accessibilityLabel={`${planTitle(pkg)}, ${freeTrials[pkg.identifier] ? `${trialPeriodLabel(freeTrials[pkg.identifier])} free, then ` : ''}${pkg.product.priceString} per ${periodLabel(pkg)}${pkg.packageType === 'ANNUAL' && savings !== null ? `, save ${savings} percent compared with monthly` : ''}`} onPress={() => { setSelected(pkg.identifier); setPurchaseIntent(true); }} style={[styles.plan, showPlanSelection && selected === pkg.identifier && styles.planSelected]}>
+              <View style={[styles.radio, showPlanSelection && selected === pkg.identifier && styles.radioSelected]}>{showPlanSelection && selected === pkg.identifier && <View style={styles.radioCenter} />}</View>
               <View style={{ flex: 1 }}><View style={styles.planHeading}><Text style={styles.planTitle}>{planTitle(pkg)}</Text>{pkg.packageType === 'ANNUAL' && savings !== null && <Text style={styles.savings}>SAVE {savings}% VS MONTHLY</Text>}</View><Text style={styles.planCaption}>{freeTrials[pkg.identifier] ? `Free for ${trialPeriodLabel(freeTrials[pkg.identifier])}, then ${pkg.product.priceString} per ${periodLabel(pkg)}` : `Billed ${pkg.product.priceString} per ${periodLabel(pkg)}`}</Text></View>
               <Text style={styles.price}>{pkg.product.priceString}</Text>
             </Pressable>
@@ -226,14 +231,6 @@ export default function PaywallScreen() {
           {(error || accessError || storeError) && <Text accessibilityRole="alert" style={styles.error}>{error || accessError || storeError}</Text>}
           {switchAccountError && <Text accessibilityRole="alert" style={styles.error}>{switchAccountError}</Text>}
           {(error || storeError) && <Pressable onPress={load} style={styles.retry}><Text style={styles.retryText}>Reload access and plans</Text></Pressable>}
-          {canStartAppTrial && plan && <View style={styles.joinNow}>
-            <Text style={styles.joinNowTitle}>Ready to join now?</Text>
-            <Text style={styles.joinNowCopy}>Your ten free app days need no payment. If you prefer a store subscription now, the selected plan is available below.</Text>
-            <Pressable disabled={busy || storeLoading || loading} onPress={purchase} accessibilityRole="button" style={styles.joinNowAction}>
-              <Text style={styles.joinNowActionText}>{selectedTrial ? 'View store trial and subscribe' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}`}</Text>
-            </Pressable>
-            <Text style={styles.joinNowTerms}>{selectedTrial ? `Store offer: free for ${selectedTrial}, then ${plan.product.priceString} per ${periodLabel(plan)}. Cancel before the store trial ends to avoid a charge. ` : `${plan.product.priceString} per ${periodLabel(plan)}. `}The subscription renews automatically until cancelled in store settings. The store confirms the offer before purchase.</Text>
-          </View>}
           <Text style={styles.sectionLabel}>WHAT OPENS WHEN YOU JOIN</Text>
           {([
             ['sunny-outline', 'A guide for every step', 'Open your morning or evening ritual and mark each step done.'],
@@ -260,10 +257,11 @@ export default function PaywallScreen() {
         </View>
       </ScrollView>
       <View style={[styles.purchaseDock, { paddingBottom: Math.max(insets.bottom, 8) }]}>
-        <Pressable disabled={busy || loading || (!canStartAppTrial && (!plan || storeLoading))} onPress={canStartAppTrial ? startFreeAccess : purchase} accessibilityRole="button" style={[styles.cta, (busy || loading || (!canStartAppTrial && (!plan || storeLoading))) && { opacity: 0.55 }]}>
-          {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{canStartAppTrial ? 'Start my 10 days free' : plan ? selectedTrial ? 'Start my store trial' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}` : 'Choose a membership'}</Text>}
+        <Pressable disabled={busy || loading || (!freeAccessIsPrimary && (!plan || storeLoading))} onPress={freeAccessIsPrimary ? startFreeAccess : purchase} accessibilityRole="button" style={[styles.cta, (busy || loading || (!freeAccessIsPrimary && (!plan || storeLoading))) && { opacity: 0.55 }]}>
+          {busy ? <ActivityIndicator color="white" /> : <Text style={styles.ctaText}>{freeAccessIsPrimary ? 'Start my 10 days free' : plan ? selectedTrial ? 'Start my store trial' : `Join for ${plan.product.priceString} / ${periodLabel(plan)}` : 'Choose a membership'}</Text>}
         </Pressable>
-        {canStartAppTrial ? <Text style={styles.terms}>Ten days of free app access. No payment or automatic charge. When it ends, a store subscription is required to continue.</Text> : plan && <Text style={styles.terms}>{selectedTrial ? `Free for ${selectedTrial}, then ${plan.product.priceString} per ${periodLabel(plan)}. Cancel before the store trial ends to avoid a charge. ` : `${plan.product.priceString} per ${periodLabel(plan)}. `}The subscription renews automatically until cancelled in store settings. The store confirms the offer before purchase.</Text>}
+        {freeAccessIsPrimary ? <Text style={styles.terms}>Ten days of free app access. No payment or automatic charge. When it ends, a store subscription is required to continue.</Text> : plan && <Text style={styles.terms}>{selectedTrial ? `Free for ${selectedTrial}, then ${plan.product.priceString} per ${periodLabel(plan)}. Cancel before the store trial ends to avoid a charge. ` : `${plan.product.priceString} per ${periodLabel(plan)}. `}The subscription renews automatically until cancelled in store settings. The store confirms the offer before purchase.</Text>}
+        {canStartAppTrial && !freeAccessIsPrimary && <Pressable disabled={busy} accessibilityRole="button" onPress={() => setPurchaseIntent(false)} style={styles.freeInstead}><Text style={styles.freeInsteadText}>Take ten days free instead</Text></Pressable>}
         <Pressable onPress={restore} disabled={busy} accessibilityRole="button" style={styles.restore}><Text style={styles.restoreText}>Restore purchases</Text></Pressable>
       </View>
       <EditorialStatusBackdrop />
@@ -277,7 +275,7 @@ const styles = StyleSheet.create({
   brand: { color: '#E7C79C', fontSize: 10, letterSpacing: 2.4, fontWeight: '800', marginBottom: 13 }, headline: { color: 'white', fontSize: 32, lineHeight: 38, fontWeight: '700', maxWidth: 300 },
   heroCopy: { color: '#F3EFE6', fontSize: 14, lineHeight: 20, maxWidth: 275, marginTop: 10 }, body: { paddingHorizontal: 21, paddingTop: 0 },
   valueLine: { color: colors.primary, fontSize: 15, lineHeight: 22, fontWeight: '600', marginTop: 21, marginBottom: 24 },
-  sectionLabel: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.7, fontWeight: '800', marginBottom: 12 }, benefit: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 13 },
+  sectionLabel: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.7, fontWeight: '800', marginBottom: 12 }, choiceHint: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: -3, marginBottom: 13 }, benefit: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 13 },
   icon: { height: 38, width: 38, borderRadius: 12, backgroundColor: colors.primarySoft, alignItems: 'center', justifyContent: 'center', marginRight: 13 }, benefitTitle: { color: colors.primary, fontWeight: '700', fontSize: 15 },
   benefitCopy: { color: colors.textSecondary, lineHeight: 19, fontSize: 12, marginTop: 3 }, plan: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'white', borderWidth: 1, borderColor: colors.border, borderRadius: 15, padding: 15, marginBottom: 10 },
   planSelected: { borderColor: colors.primary, borderWidth: 2, backgroundColor: '#F4F7F3' }, radio: { width: 21, height: 21, borderRadius: 11, borderWidth: 1.5, borderColor: colors.textTertiary, marginRight: 12, alignItems: 'center', justifyContent: 'center' },
@@ -285,7 +283,7 @@ const styles = StyleSheet.create({
   planHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }, savings: { color: 'white', backgroundColor: colors.primary, fontSize: 9, fontWeight: '800', overflow: 'hidden', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
   planCaption: { color: colors.textSecondary, fontSize: 11, marginTop: 3 }, price: { color: colors.primary, fontWeight: '800', fontSize: 17 }, purchaseDock: { backgroundColor: '#FCFBF8', borderTopWidth: 1, borderColor: colors.border, paddingHorizontal: 20, paddingTop: 10 }, cta: { backgroundColor: colors.primary, borderRadius: 16, minHeight: 54, justifyContent: 'center', alignItems: 'center' },
   ctaText: { color: 'white', fontSize: 15, fontWeight: '700' }, terms: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: 8 }, restore: { alignItems: 'center', paddingTop: 8, paddingBottom: 2 },
-  restoreText: { color: colors.primary, fontSize: 13, fontWeight: '700' }, error: { color: '#A64032', fontSize: 12, lineHeight: 18, marginTop: 8, textAlign: 'center' }, retry: { alignItems: 'center', padding: 9 },
+  restoreText: { color: colors.primary, fontSize: 13, fontWeight: '700' }, freeInstead: { alignItems: 'center', justifyContent: 'center', minHeight: 34, marginTop: 3 }, freeInsteadText: { color: colors.primary, fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' }, error: { color: '#A64032', fontSize: 12, lineHeight: 18, marginTop: 8, textAlign: 'center' }, retry: { alignItems: 'center', padding: 9 },
   retryText: { color: colors.primary, fontWeight: '700' }, footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 9, marginTop: 4 }, footerLink: { color: colors.textSecondary, fontSize: 12, textDecorationLine: 'underline' },
   dot: { color: colors.textTertiary }, account: { textAlign: 'center', fontSize: 11, color: colors.textTertiary, marginTop: 12 },
   yourPlan: { borderRadius: 20, backgroundColor: '#FBFAF6', borderColor: '#E5E4D9', borderWidth: 1, padding: 19, marginTop: -27 },
@@ -301,11 +299,5 @@ const styles = StyleSheet.create({
   freeAccessTitle: { color: colors.primary, fontSize: 24, lineHeight: 29, fontWeight: '700', marginTop: 7 },
   freeAccessCopy: { color: colors.textSecondary, fontSize: 13, lineHeight: 20, marginTop: 7 },
   continueRitual: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 44, marginTop: 10 },
-  continueRitualText: { color: colors.primary, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
-  joinNow: { borderTopWidth: 1, borderColor: colors.border, paddingTop: 16, marginTop: 10, marginBottom: 24 },
-  joinNowTitle: { color: colors.primary, fontSize: 18, fontWeight: '700' },
-  joinNowCopy: { color: colors.textSecondary, fontSize: 12, lineHeight: 18, marginTop: 5 },
-  joinNowAction: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.primary, alignItems: 'center', justifyContent: 'center', marginTop: 12, paddingHorizontal: 12 },
-  joinNowActionText: { color: colors.primary, fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  joinNowTerms: { color: colors.textSecondary, fontSize: 11, lineHeight: 16, marginTop: 9 }
+  continueRitualText: { color: colors.primary, fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' }
 });
