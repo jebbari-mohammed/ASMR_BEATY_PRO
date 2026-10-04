@@ -8,6 +8,7 @@ import {
   validateDiscoveryProducts,
   type ApprovedTrackingHost
 } from '../services/product-discovery.js';
+import { auditPublishManifest, validatePublishManifest } from './product-link-audit.js';
 
 type Options = Record<string, string | boolean>;
 
@@ -100,13 +101,21 @@ async function run(): Promise<void> {
 
     let input: unknown = [];
     if (command === 'publish') {
-      const parsed = JSON.parse(await readFile(required(options, '--file'), 'utf8')) as unknown;
-      input = Array.isArray(parsed) ? parsed :
-        parsed && typeof parsed === 'object' ? (parsed as { products?: unknown }).products : undefined;
+      input = JSON.parse(await readFile(required(options, '--file'), 'utf8')) as unknown;
     }
-    const containsCommissioned = Array.isArray(input) && input.some(item =>
+    const entries = Array.isArray(input) ? input :
+      input && typeof input === 'object' ? (input as { products?: unknown }).products : undefined;
+    const containsCommissioned = Array.isArray(entries) && entries.some(item =>
       typeof item === 'object' && item !== null && (item as { isCommissioned?: unknown }).isCommissioned === true);
-    const products = validateDiscoveryProducts(input, containsCommissioned ? await approvedHosts(db) : []);
+    const approvals = containsCommissioned ? await approvedHosts(db) : [];
+    const manifest = command === 'publish'
+      ? validatePublishManifest(input, approvals)
+      : { products: validateDiscoveryProducts(input), expectedDestinations: {} };
+    const products = manifest.products;
+    if (containsCommissioned) {
+      await auditPublishManifest(manifest, approvals);
+      process.stdout.write(`Verified ${products.filter(item => item.isCommissioned).length} partner redirect(s) reach their expected Ulta product pages.\n`);
+    }
     const existing = await catalogRef.get();
     if (existing.exists && existing.get('version') === 1 &&
         JSON.stringify(existing.get('products')) === JSON.stringify(products)) {
