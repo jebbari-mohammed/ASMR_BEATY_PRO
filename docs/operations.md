@@ -16,6 +16,10 @@
 - Check VoiceOver, TalkBack, larger text, contrast, and smaller screens. Inspect store screenshots for actual build behavior and the no-people image rule.
 - Monitor Firebase Function errors, billing verification failures, Firestore denials, sign-in/verification failures, crash-free sessions, and support inbox during closed tests and staged rollout. Do not log passwords, subscription tokens, or user routine contents.
 
+## Local Android signing backup
+
+The historical SDK 52 backup is outside this repository. Its release keystore and Gradle file are restricted to owner read/write (`0600`). The two release passwords were moved from that Gradle file into the macOS login Keychain under account `com.asmr.beautypro`, services `asmr-beauty-pro-android-store-password` and `asmr-beauty-pro-android-key-password`. The backup Gradle file now reads `ASMR_RELEASE_STORE_PASSWORD` and `ASMR_RELEASE_KEY_PASSWORD` from the environment. Retrieve those Keychain values into the environment before a local signed build; keep them out of command output, logs, and repository files. The keystore itself and its registered Play upload certificate were not changed.
+
 ## Rollback
 
 - Pause staged store rollout before changing a broken release. Keep the last working signed build and Firebase ruleset available.
