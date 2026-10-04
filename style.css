@@ -249,7 +249,10 @@ button, summary { font: inherit; }
   .mobile-nav { display: block; }
   .mobile-nav summary { cursor: pointer; list-style: none; width: 46px; height: 46px; border: 1px solid #bdcbbf; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
   .mobile-nav summary::-webkit-details-marker { display: none; }
-  .mobile-nav summary span { display: block; width: 19px; height: 1.5px; background: var(--forest); }
+  .mobile-nav summary span { display: block; width: 19px; height: 1.5px; background: var(--forest); transition: transform .2s ease; }
+  .mobile-nav[open] summary { background: var(--mist); border-color: var(--forest); }
+  .mobile-nav[open] summary span:first-child { transform: translateY(3.75px) rotate(45deg); }
+  .mobile-nav[open] summary span:last-child { transform: translateY(-3.75px) rotate(-45deg); }
   .mobile-nav nav { position: absolute; top: 70px; right: 0; left: 0; background: var(--paper); border-top: 1px solid var(--line); box-shadow: 0 16px 28px rgba(16,40,30,.12); padding: 21px clamp(22px,5vw,55px) 29px; display: flex; flex-direction: column; gap: 19px; }
   .mobile-nav nav a { color: var(--forest); font-size: 1rem; text-decoration: none; font-weight: 600; }
   .app-feature-grid { display: block; }
