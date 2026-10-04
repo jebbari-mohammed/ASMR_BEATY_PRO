@@ -43,11 +43,23 @@ not use it. Submit the sitemap through the verified URL-prefix property in
 Google Search Console. Keep the `google3e206f76b54dc34c.html` file in the
 site root so ownership verification remains valid.
 
-On October 3, 2026, Search Console's verified URL-prefix property showed the
-correct full sitemap URL as **Couldn't fetch**, with no last-read date and zero
-discovered pages. The same URL returned HTTP 200 with `application/xml` to a
-normal client and a Googlebot user agent, and its six URLs parsed correctly.
-The Page indexing and Performance reports were still processing. Recheck the
-Sitemaps report and use Search Console's live URL inspection before claiming
-Google has fetched or indexed the site. A sitemap submission is a discovery
-hint, not proof of indexing or ranking.
+On October 3, 2026, Search Console's verified URL-prefix property confirmed
+that the homepage and `/skincare-routine-guide.html` are **on Google** and
+**indexed**. Their Page indexing details showed successful Googlebot smartphone
+fetches, allowed crawling and indexing, and the inspected URLs as Google's
+selected canonicals. The last indexed crawls were at 13:52:28 and 14:26:51
+Pacific time, respectively, before the latest FAQ and Product Shelf updates.
+Fresh indexing was requested for the updated guide and homepage on the same
+day. These requests enter Google's crawl queue; they do not prove that the new
+content has already been indexed or that either page ranks for a query.
+
+The sitemap report still shows **Couldn't fetch** / **Sitemap could not be
+read**, a temporary processing error, and zero discovered pages, despite a
+last-read date of October 3. The full project-path sitemap URL is correct and
+was resubmitted in Search Console, which accepted the submission. The XML
+returned HTTP 200 with `application/xml` to normal and Googlebot user agents;
+all six listed URLs parsed correctly. Search Console's live smartphone URL
+inspection also reported a successful fetch, with crawling and indexing
+allowed. Recheck the sitemap report later; the live fetch and individual page
+indexing are stronger current evidence than the stalled aggregate report. A
+sitemap submission is a discovery hint, not proof of indexing or ranking.
