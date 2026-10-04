@@ -375,7 +375,7 @@ export default function SettingsModal() {
             <Text style={styles.disclosureTitle}>AFFILIATE DISCLOSURE</Text>
           </View>
           <Text style={styles.disclosureText}>
-            The current routine app does not include affiliate product links. If shopping links are added later, any commission will be disclosed beside them.
+            My Shelf may show optional retailer links. If a link can earn us a commission, we say so beside it. You buy directly from the retailer, and shopping is never required for your routine.
           </Text>
         </Card>
 

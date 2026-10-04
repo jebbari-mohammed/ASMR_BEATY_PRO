@@ -7,7 +7,7 @@ interface DisclaimerBarProps {
   showAffiliate?: boolean;
 }
 
-export const DisclaimerBar: React.FC<DisclaimerBarProps> = ({ showAffiliate = true }) => {
+export const DisclaimerBar: React.FC<DisclaimerBarProps> = ({ showAffiliate = false }) => {
   return (
     <View style={styles.container}>
       <View style={styles.badgeRow}>
@@ -19,7 +19,7 @@ export const DisclaimerBar: React.FC<DisclaimerBarProps> = ({ showAffiliate = tr
       </Text>
       {showAffiliate && (
         <Text style={[styles.text, styles.affiliateText]}>
-          We may earn a commission if you purchase through our links. Commission does not affect compatibility ranking.
+          We may earn a commission from some product links. Those links are labeled beside the product.
         </Text>
       )}
     </View>
