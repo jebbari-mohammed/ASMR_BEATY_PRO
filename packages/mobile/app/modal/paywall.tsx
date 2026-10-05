@@ -186,8 +186,8 @@ export default function PaywallScreen() {
             <Text style={styles.yourPlanTitle}>{starterPlan.ritualName}</Text>
             <Text style={styles.yourPlanCopy}>{starterPlan.personalInsight}</Text>
             <View style={styles.planPreviewRow}>
-              <View style={styles.planPreview}><Ionicons name="sunny-outline" size={18} color={colors.goldDark} /><Text style={styles.planPreviewLabel}>MORNING GUIDE</Text><Text style={styles.planPreviewText}>{starterPlan.steps.filter(step => step.period === 'morning').length} steps to follow</Text></View>
-              <View style={styles.planPreview}><Ionicons name="moon-outline" size={18} color={colors.goldDark} /><Text style={styles.planPreviewLabel}>EVENING GUIDE</Text><Text style={styles.planPreviewText}>{starterPlan.steps.filter(step => step.period === 'evening').length} steps to follow</Text></View>
+              <View style={styles.planPreview}><Ionicons name="sunny-outline" size={18} color={colors.goldDark} /><Text style={styles.planPreviewLabel}>MORNING GUIDE</Text><Text style={styles.planPreviewText}>{starterPlan.steps.filter(step => step.period === 'morning').length} planned steps</Text></View>
+              <View style={styles.planPreview}><Ionicons name="moon-outline" size={18} color={colors.goldDark} /><Text style={styles.planPreviewLabel}>EVENING GUIDE</Text><Text style={styles.planPreviewText}>{starterPlan.steps.filter(step => step.period === 'evening').length} planned steps</Text></View>
             </View>
             <Text style={styles.planUnlockNote}>Membership opens your complete, editable routine.</Text>
             <View style={styles.weekPromise}><Ionicons name="calendar-outline" size={17} color={colors.primary} /><Text style={styles.weekPromiseText}>Your first-week path is ready to follow inside.</Text></View>

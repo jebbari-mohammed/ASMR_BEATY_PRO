@@ -9,6 +9,7 @@ test('someone with no products gets an actionable free preview and optional prod
   expect(previewStarterStep(plan).name).toBe('Protect outdoors');
   expect(previewStarterStep(plan).detail).toContain('shade and wear protective clothing');
   expect(plan.steps.filter(step => step.name === 'Moisturize when ready')).toHaveLength(2);
+  expect(plan.steps.filter(step => step.paused === true).map(step => step.id)).toEqual(['m2', 'e2']);
   expect(plan.portrait.onHand).toBe('Starting without products');
   expect(plan.whyItFits[2]).toContain('without buying anything');
 });

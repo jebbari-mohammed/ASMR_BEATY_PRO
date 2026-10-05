@@ -91,6 +91,7 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
   });
   base.push({
     id: 'm2', period: 'morning', category: 'Hydrate', name: missingMoisturizer ? 'Moisturize when ready' : 'Moisturize',
+    paused: missingMoisturizer,
     detail: missingMoisturizer
       ? 'When you have a moisturizer you tolerate, apply it gently. If you do not have one yet, skip this step for now.'
       : moisturizerApproach === 'damp'
@@ -129,6 +130,7 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
   });
   base.push({
     id: 'e2', period: 'evening', category: 'Hydrate', name: missingMoisturizer ? 'Moisturize when ready' : 'Moisturize',
+    paused: missingMoisturizer,
     detail: missingMoisturizer
       ? 'Finish with a moisturizer you already tolerate when you have one. Otherwise, skip this step for now.'
       : dry || hydrationGoal

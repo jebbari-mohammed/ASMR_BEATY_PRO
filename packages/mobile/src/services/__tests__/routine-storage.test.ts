@@ -81,6 +81,7 @@ test('the owned basics answer changes the routine after membership unlock', asyn
   expect(steps.map(step => step.name)).toEqual([
     'Moisturize when ready', 'Protect outdoors', 'Rinse gently', 'Moisturize when ready'
   ]);
+  expect(activeRoutineSteps(steps).map(step => step.id)).toEqual(['m3', 'e1']);
 });
 
 test('pausing a step is reversible and does not erase past completion data', async () => {
