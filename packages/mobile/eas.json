@@ -27,6 +27,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {},
+    "testflight": {
+      "ios": {
+        "ascAppId": "6760679807",
+        "groups": ["Owner device QA"]
+      }
+    }
   }
 }
