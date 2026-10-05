@@ -1,12 +1,13 @@
 import type { OnboardingStateV1 } from '@asmr/shared';
 import type { RoutineStep } from './routine-service';
 
-export type StarterAnswers = Pick<OnboardingStateV1, 'selectedGoals' | 'skinFeelByEndOfDay' | 'sensitivityLevel' | 'timeCommitment' | 'desiredComplexity' | 'existingRoutineTier' | 'sunscreenHabit' | 'primaryMotivation'>;
+export type StarterAnswers = Pick<OnboardingStateV1, 'selectedGoals' | 'skinFeelByEndOfDay' | 'sensitivityLevel' | 'timeCommitment' | 'ownedBasics' | 'desiredComplexity' | 'existingRoutineTier' | 'sunscreenHabit' | 'primaryMotivation'>;
 
 export type StarterPlan = {
   steps: RoutineStep[];
   headline: string;
   ritualName: string;
+  portrait: { focus: string; pace: string; approach: string; onHand: string };
   personalInsight: string;
   explanation: string;
   focus: string;
@@ -38,6 +39,11 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
   // These answers cannot rule out allergies or an underlying skin condition.
   const sensitive = state.sensitivityLevel === 'occasionally' || state.sensitivityLevel === 'sometimes' || state.sensitivityLevel === 'often' || state.sensitivityLevel === 'very_easily';
   const short = state.timeCommitment === 'about_2_minutes' || state.desiredComplexity === 'minimal';
+  const owned = new Set(state.ownedBasics ?? []);
+  const knownInventory = owned.size > 0 && !owned.has('not_sure');
+  const missingCleanser = knownInventory && !owned.has('cleanser');
+  const missingMoisturizer = knownInventory && !owned.has('moisturizer');
+  const missingSunscreen = knownInventory && !owned.has('sunscreen');
   const hydrationGoal = goals.has('more_hydration_less_dryness');
   const shineGoal = goals.has('less_shine_oiliness');
   const breakoutGoal = goals.has('fewer_visible_breakouts');
@@ -59,19 +65,35 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
     : primaryGoal === 'fewer_visible_breakouts' ? 'The Steady Ritual'
     : primaryGoal === 'smoother_looking_texture' ? 'The Simple Ritual'
     : 'Your Everyday Ritual';
+  const portrait = {
+    focus: primaryGoal === 'more_hydration_less_dryness' ? 'Comfort'
+      : primaryGoal === 'fewer_visible_breakouts' ? 'Steady care'
+      : primaryGoal === 'calmer_looking_redness' ? 'Gentleness'
+      : primaryGoal === 'smoother_looking_texture' ? 'A simple base'
+      : primaryGoal === 'less_shine_oiliness' ? 'Balance' : 'An easy start',
+    pace: short ? 'A quick start' : state.timeCommitment === 'ten_plus_minutes' ? 'An unhurried moment' : 'A few minutes',
+    approach: sensitive || rednessGoal ? 'Familiar first' : 'Gentle basics',
+    onHand: owned.has('none_yet') ? 'Starting without products'
+      : knownInventory ? `${owned.size} ${owned.size === 1 ? 'basic' : 'basics'} on hand`
+        : 'Products are your choice'
+  };
   const base: RoutineStep[] = [];
 
   if (!short) base.push({
-    id: 'm1', period: 'morning', category: 'Cleanse', name: dry || sensitive ? 'Refresh gently' : 'Gentle cleanse',
-    detail: dry || sensitive || rednessGoal
+    id: 'm1', period: 'morning', category: 'Cleanse', name: missingCleanser ? 'Water refresh' : dry || sensitive ? 'Refresh gently' : 'Gentle cleanse',
+    detail: missingCleanser
+      ? 'Rinse with lukewarm water if it feels comfortable. You do not need a cleanser for this morning step; avoid scrubbing.'
+      : dry || sensitive || rednessGoal
       ? 'A lukewarm water rinse may be enough. If you cleanse, use a familiar gentle cleanser and avoid scrubbing.'
       : breakoutGoal || textureGoal
         ? 'Use a familiar gentle cleanser with your fingertips, or rinse with water. Avoid scrubbing.'
         : 'Use a gentle cleanser you already tolerate, or rinse with water.'
   });
   base.push({
-    id: 'm2', period: 'morning', category: 'Hydrate', name: 'Moisturize',
-    detail: moisturizerApproach === 'damp'
+    id: 'm2', period: 'morning', category: 'Hydrate', name: missingMoisturizer ? 'Moisturize when ready' : 'Moisturize',
+    detail: missingMoisturizer
+      ? 'When you have a moisturizer you tolerate, apply it gently. If you do not have one yet, skip this step for now.'
+      : moisturizerApproach === 'damp'
       ? 'Apply a familiar moisturizer while skin is slightly damp after rinsing, if that feels comfortable.'
       : moisturizerApproach === 'gentle'
         ? 'Use a familiar moisturizer. If you replace it, look for fragrance-free and introduce it slowly.'
@@ -84,8 +106,10 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
             : 'Apply a moisturizer you already know and tolerate.'
   });
   base.push({
-    id: 'm3', period: 'morning', category: 'Protect', name: 'Sun protection',
-    detail: state.sunscreenHabit === 'never' || state.sunscreenHabit === 'rarely'
+    id: 'm3', period: 'morning', category: 'Protect', name: missingSunscreen ? 'Protect outdoors' : 'Sun protection',
+    detail: missingSunscreen
+      ? 'Before outdoor daylight, seek shade and wear protective clothing. When you have broad-spectrum, water-resistant SPF 30+ sunscreen, use it as directed.'
+      : state.sunscreenHabit === 'never' || state.sunscreenHabit === 'rarely'
       ? 'Before going outdoors, use broad-spectrum, water-resistant SPF 30+ sunscreen if you have it. Meanwhile, seek shade and wear protective clothing.'
       : state.sunscreenHabit === 'mostly_sunny_days'
         ? 'Before outdoor time, use broad-spectrum, water-resistant SPF 30+ sunscreen even on cloudy days; reapply as the label directs.'
@@ -94,16 +118,20 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
           : 'Before outdoor daylight, use broad-spectrum, water-resistant SPF 30+ sunscreen; reapply as the label directs.'
   });
   base.push({
-    id: 'e1', period: 'evening', category: 'Cleanse', name: 'Gentle cleanse',
-    detail: sensitive || rednessGoal
+    id: 'e1', period: 'evening', category: 'Cleanse', name: missingCleanser ? 'Rinse gently' : 'Gentle cleanse',
+    detail: missingCleanser
+      ? 'If you wore sunscreen or makeup, a gentle cleanser may help remove it. Until you have one, rinse without scrubbing.'
+      : sensitive || rednessGoal
       ? 'Wash with a familiar gentle cleanser and lukewarm water. Pat dry; do not scrub or rub.'
       : breakoutGoal || textureGoal
         ? 'Wash off sunscreen with a familiar gentle cleanser and your fingertips. Avoid abrasive scrubs.'
         : 'Wash off sunscreen and the day with a gentle cleanser you already tolerate.'
   });
   base.push({
-    id: 'e2', period: 'evening', category: 'Hydrate', name: 'Moisturize',
-    detail: dry || hydrationGoal
+    id: 'e2', period: 'evening', category: 'Hydrate', name: missingMoisturizer ? 'Moisturize when ready' : 'Moisturize',
+    detail: missingMoisturizer
+      ? 'Finish with a moisturizer you already tolerate when you have one. Otherwise, skip this step for now.'
+      : dry || hydrationGoal
       ? 'Finish with a familiar moisturizer while skin is still slightly damp, if that feels comfortable.'
       : sensitive || rednessGoal
         ? 'Finish with a familiar moisturizer; skip anything that stings or irritates your skin.'
@@ -134,9 +162,17 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
             : 'Your moisturizer step begins with a product you already tolerate.';
 
   const whyItFits = [
-    short ? 'You chose a short ritual, so morning starts with moisturizer and sun protection.' : 'Your morning cleanse can be a quick water rinse when that feels better.',
-    moisturizerFit,
-    sensitive ? 'You said products can bother your skin, so the steps avoid scrubbing and add no new treatment.' : 'You can decide later whether any other products belong in your routine.'
+    short
+      ? missingMoisturizer && missingSunscreen
+        ? 'You chose a quick ritual. Product steps can wait; use shade and protective clothing before outdoor daylight.'
+        : 'You chose a short ritual, so morning keeps to moisturizer and outdoor protection.'
+      : 'Your morning cleanse can be a quick water rinse when that feels better.',
+    missingMoisturizer ? 'You do not have a moisturizer yet, so that step can wait until you find one you tolerate.' : moisturizerFit,
+    knownInventory
+      ? owned.has('none_yet')
+        ? 'You can begin without buying anything: product steps can wait, and outdoor shade and clothing are included.'
+        : `You have ${portrait.onHand.toLowerCase()}; missing product steps can wait.`
+      : sensitive ? 'You said products can bother your skin, so the steps avoid scrubbing and add no new treatment.' : 'You can decide later whether any other products belong in your routine.'
   ];
   if (breakoutGoal) whyItFits.push('For visible breakouts, cleanse gently and avoid abrasive scrubs; this is a care routine, not an acne treatment.');
   else if (textureGoal) whyItFits.push('For texture or pores, the cleanse step stays gentle instead of adding an abrasive scrub.');
@@ -151,11 +187,13 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
     : state.primaryMotivation === 'find_right_products' ? 'Keep the products you already own together on your private shelf.'
     : 'Return to your small ritual when you can; consistency grows one day at a time.';
 
-  const personalInsight = `${short ? 'You asked for something quick' : 'You made room for a slower moment'}${dry ? ' and said your skin feels tight by evening' : oily ? ' and notice shine by evening' : ''}. ${sensitive ? 'So your start stays with familiar, gentle products.' : 'So your first week begins with simple steps you can adjust.'}`;
+  const personalInsight = `${short ? 'You asked for something quick' : 'You made room for a slower moment'}${dry ? ' and said your skin feels tight by evening' : oily ? ' and notice shine by evening' : ''}. ${sensitive ? 'So your start stays with familiar, gentle products.' : 'So your first week begins with simple steps you can adjust.'}${knownInventory ? owned.has('none_yet') ? ' You can begin without buying anything.' : ' We also marked the products you already have.' : ''}`;
   const firstWeek = [
     {
       day: 'DAY 01', title: 'Make it familiar',
-      detail: state.existingRoutineTier === 'nothing_yet' || !state.existingRoutineTier
+      detail: owned.has('none_yet')
+        ? 'Begin with the steps you can do today. Product steps can wait; before outdoor time, use shade and protective clothing.'
+        : state.existingRoutineTier === 'nothing_yet' || !state.existingRoutineTier
         ? 'Begin with any basics you already own. If a step needs a product you do not have, skip it until you are ready.'
         : 'Match each step to a product you already use and feel comfortable with.'
     },
@@ -173,5 +211,11 @@ export function buildStarterPlan(state: StarterAnswers): StarterPlan {
     }
   ];
 
-  return { steps: base, headline, ritualName, personalInsight, explanation, focus, caution, whyItFits, habitPrompt, firstWeek };
+  return { steps: base, headline, ritualName, portrait, personalInsight, explanation, focus, caution, whyItFits, habitPrompt, firstWeek };
+}
+
+/** Give a usable preview, even when the customer does not own a product yet. */
+export function previewStarterStep(plan: StarterPlan): RoutineStep {
+  const morning = plan.steps.filter(step => step.period === 'morning');
+  return morning.find(step => !step.name.includes('when ready')) ?? morning[0];
 }

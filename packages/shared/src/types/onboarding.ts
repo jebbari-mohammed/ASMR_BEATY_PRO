@@ -1,6 +1,6 @@
 /**
  * Onboarding State Machine Types & Schema
- * Value-First Architecture: Pre-scan value -> Guided scan -> WOW Snapshot -> Progressive Personalization
+ * Persisted onboarding answers and migration steps. Current UI builds a ritual portrait without a photo.
  */
 
 import { z } from 'zod';
@@ -24,6 +24,7 @@ export type OnboardingStep =
   | 'SHELF_CAPTURE_PROMPT'
   | 'DESIRED_COMPLEXITY'
   | 'TIME_COMMITMENT'
+  | 'OWNED_BASICS'
   | 'SUNSCREEN_HABIT'
   | 'BUDGET_PREFERENCE'
   | 'PRODUCT_PREFERENCES'
@@ -78,6 +79,8 @@ export type ExistingRoutineOption =
   | 'regular'
   | 'advanced'
   | 'unsure';
+
+export type OwnedBasicOption = 'cleanser' | 'moisturizer' | 'sunscreen' | 'none_yet' | 'not_sure';
 
 export type ShelfScanChoice =
   | 'scan_products'
@@ -146,6 +149,7 @@ export interface OnboardingStateV1 {
   shelfScanChoice?: ShelfScanChoice;
   desiredComplexity?: DesiredComplexityOption;
   timeCommitment?: TimeCommitmentOption;
+  ownedBasics?: OwnedBasicOption[];
   sunscreenHabit?: SunscreenHabitOption;
   budgetPreference?: BudgetPreferenceOption;
   productPreferencesToAvoid: ProductAvoidanceOption[];
@@ -175,6 +179,7 @@ export const OnboardingStateV1Schema = z.object({
   shelfScanChoice: z.string().optional(),
   desiredComplexity: z.string().optional(),
   timeCommitment: z.string().optional(),
+  ownedBasics: z.array(z.enum(['cleanser', 'moisturizer', 'sunscreen', 'none_yet', 'not_sure'])).max(3).optional(),
   sunscreenHabit: z.string().optional(),
   budgetPreference: z.string().optional(),
   productPreferencesToAvoid: z.array(z.string()),

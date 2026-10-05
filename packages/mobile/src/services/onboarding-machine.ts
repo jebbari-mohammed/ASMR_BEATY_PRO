@@ -13,6 +13,7 @@ import {
   OnboardingStep,
   OnboardingStateV1,
   OnboardingStateV1Schema,
+  OwnedBasicOption,
   PrimaryGoalOption,
   PhotoStorageChoice,
   SkinFeelOption,
@@ -121,6 +122,7 @@ export class OnboardingService {
       skinFeelByEndOfDay: state.skinFeelByEndOfDay ?? null,
       sensitivityLevel: state.sensitivityLevel ?? null,
       timeCommitment: state.timeCommitment ?? null,
+      ownedBasics: state.ownedBasics ?? null,
       desiredComplexity: state.desiredComplexity ?? null,
       existingRoutineTier: state.existingRoutineTier ?? null,
       sunscreenHabit: state.sunscreenHabit ?? null,
@@ -179,11 +181,19 @@ export class OnboardingService {
     const profile = await firestore().collection('users').doc(uid).get();
     const saved = profile.data()?.starterPreferences as Partial<StarterAnswers> | undefined;
     if (!saved || !Array.isArray(saved.selectedGoals) || saved.selectedGoals.length < 1 || saved.selectedGoals.length > 2 || !saved.selectedGoals.every(value => typeof value === 'string')) return null;
+    const allowedBasics: OwnedBasicOption[] = ['cleanser', 'moisturizer', 'sunscreen', 'none_yet', 'not_sure'];
+    const storedBasics = Array.isArray(saved.ownedBasics)
+      ? saved.ownedBasics.filter((value): value is OwnedBasicOption => allowedBasics.includes(value))
+      : [];
+    const ownedBasics = storedBasics.includes('none_yet') ? ['none_yet'] as OwnedBasicOption[]
+      : storedBasics.includes('not_sure') ? ['not_sure'] as OwnedBasicOption[]
+        : [...new Set(storedBasics)].slice(0, 3);
     return {
       selectedGoals: saved.selectedGoals,
       skinFeelByEndOfDay: saved.skinFeelByEndOfDay ?? undefined,
       sensitivityLevel: saved.sensitivityLevel ?? undefined,
       timeCommitment: saved.timeCommitment ?? undefined,
+      ownedBasics: ownedBasics.length ? ownedBasics : undefined,
       desiredComplexity: saved.desiredComplexity ?? undefined,
       existingRoutineTier: saved.existingRoutineTier ?? undefined,
       sunscreenHabit: saved.sunscreenHabit ?? undefined,

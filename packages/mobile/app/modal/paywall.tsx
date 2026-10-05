@@ -182,13 +182,14 @@ export default function PaywallScreen() {
         </ImageBackground>
         <View style={styles.body}>
           {starterPlan && <View style={styles.yourPlan}>
-            <Text style={styles.yourPlanEyebrow}>THIS IS WHAT YOU MADE</Text>
+            <Text style={styles.yourPlanEyebrow}>YOUR RITUAL PORTRAIT</Text>
             <Text style={styles.yourPlanTitle}>{starterPlan.ritualName}</Text>
             <Text style={styles.yourPlanCopy}>{starterPlan.personalInsight}</Text>
             <View style={styles.planPreviewRow}>
-              <View style={styles.planPreview}><Ionicons name="sunny-outline" size={18} color={colors.goldDark} /><Text style={styles.planPreviewLabel}>MORNING</Text><Text style={styles.planPreviewText}>{starterPlan.steps.filter(step => step.period === 'morning').map(step => step.name).join(' · ')}</Text></View>
-              <View style={styles.planPreview}><Ionicons name="moon-outline" size={18} color={colors.goldDark} /><Text style={styles.planPreviewLabel}>EVENING</Text><Text style={styles.planPreviewText}>{starterPlan.steps.filter(step => step.period === 'evening').map(step => step.name).join(' · ')}</Text></View>
+              <View style={styles.planPreview}><Ionicons name="sunny-outline" size={18} color={colors.goldDark} /><Text style={styles.planPreviewLabel}>MORNING GUIDE</Text><Text style={styles.planPreviewText}>{starterPlan.steps.filter(step => step.period === 'morning').length} steps to follow</Text></View>
+              <View style={styles.planPreview}><Ionicons name="moon-outline" size={18} color={colors.goldDark} /><Text style={styles.planPreviewLabel}>EVENING GUIDE</Text><Text style={styles.planPreviewText}>{starterPlan.steps.filter(step => step.period === 'evening').length} steps to follow</Text></View>
             </View>
+            <Text style={styles.planUnlockNote}>Membership opens your complete, editable routine.</Text>
             <View style={styles.weekPromise}><Ionicons name="calendar-outline" size={17} color={colors.primary} /><Text style={styles.weekPromiseText}>Your first-week path is ready to follow inside.</Text></View>
           </View>}
           <Text style={styles.valueLine}>Everything you need to keep showing up for your skin, in one quiet place.</Text>
@@ -279,6 +280,7 @@ const styles = StyleSheet.create({
   yourPlanTitle: { color: colors.primary, fontSize: 23, lineHeight: 28, fontWeight: '700', marginTop: 7 },
   yourPlanCopy: { color: colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: 7 }, honestNote: { color: colors.textSecondary, fontSize: 11, lineHeight: 17, marginTop: 8 },
   planPreviewRow: { flexDirection: 'row', gap: 9, marginTop: 17 }, planPreview: { flex: 1, minHeight: 100, borderRadius: 13, backgroundColor: '#EFF2EC', padding: 12 }, planPreviewLabel: { color: colors.goldDark, fontSize: 10, letterSpacing: 1.2, fontWeight: '800', marginTop: 7 }, planPreviewText: { color: colors.primary, fontSize: 12, lineHeight: 17, marginTop: 5 }, weekPromise: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 15 }, weekPromiseText: { flex: 1, color: colors.primary, fontSize: 12, fontWeight: '700', lineHeight: 17 },
+  planUnlockNote: { color: colors.primary, fontSize: 12, lineHeight: 18, fontWeight: '600', marginTop: 13 },
   yourPlanHabit: { color: colors.primary, fontSize: 12, lineHeight: 18, marginTop: 10 },
   yourPlanTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 15 },
   yourPlanTag: { color: colors.primary, fontWeight: '800', fontSize: 9, letterSpacing: 0.8, backgroundColor: 'white', overflow: 'hidden', borderRadius: 8, padding: 8 },

@@ -1,4 +1,35 @@
-import { buildStarterPlan } from '../personalized-starter';
+import { buildStarterPlan, previewStarterStep } from '../personalized-starter';
+
+test('someone with no products gets an actionable free preview and optional product steps', () => {
+  const plan = buildStarterPlan({
+    selectedGoals: ['unsure_help_me_decide'],
+    timeCommitment: 'about_2_minutes',
+    ownedBasics: ['none_yet']
+  });
+  expect(previewStarterStep(plan).name).toBe('Protect outdoors');
+  expect(previewStarterStep(plan).detail).toContain('shade and wear protective clothing');
+  expect(plan.steps.filter(step => step.name === 'Moisturize when ready')).toHaveLength(2);
+  expect(plan.portrait.onHand).toBe('Starting without products');
+  expect(plan.whyItFits[2]).toContain('without buying anything');
+});
+
+test('a partial product shelf changes the guide and previews a step that uses what is owned', () => {
+  const plan = buildStarterPlan({
+    selectedGoals: ['more_hydration_less_dryness'],
+    timeCommitment: 'about_2_minutes',
+    ownedBasics: ['moisturizer']
+  });
+  expect(previewStarterStep(plan).name).toBe('Moisturize');
+  expect(plan.steps.find(step => step.id === 'm3')?.name).toBe('Protect outdoors');
+  expect(plan.steps.find(step => step.id === 'e1')?.name).toBe('Rinse gently');
+  expect(plan.portrait.onHand).toBe('1 basic on hand');
+});
+
+test('an uncertain shelf keeps product advice flexible', () => {
+  const plan = buildStarterPlan({ selectedGoals: ['unsure_help_me_decide'], ownedBasics: ['not_sure'] });
+  expect(plan.steps.find(step => step.id === 'm2')?.name).toBe('Moisturize');
+  expect(plan.portrait.onHand).toBe('Products are your choice');
+});
 
 test('a short, dry and reactive-skin plan stays gentle and fits four steps', () => {
   const plan = buildStarterPlan({
