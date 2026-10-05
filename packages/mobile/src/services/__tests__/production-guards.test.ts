@@ -345,7 +345,8 @@ test('new account binding moves personal answers to its profile and removes the 
       ...INITIAL_ONBOARDING_STATE,
       currentStep: 'COMPLETED',
       selectedGoals: ['more_hydration_less_dryness'],
-      skinFeelByEndOfDay: 'tight_or_dry'
+      skinFeelByEndOfDay: 'tight_or_dry',
+      ownedBasics: ['moisturizer']
     })],
     ['asmr_latest_skin_scan_v1', '{"photoUri":"file:///old-face.jpg"}']
   ]);
@@ -358,7 +359,8 @@ test('new account binding moves personal answers to its profile and removes the 
 
   expect(mockProfileSet).toHaveBeenCalledWith({ starterPreferences: expect.objectContaining({
     selectedGoals: ['more_hydration_less_dryness'],
-    skinFeelByEndOfDay: 'tight_or_dry'
+    skinFeelByEndOfDay: 'tight_or_dry',
+    ownedBasics: ['moisturizer']
   }) }, { merge: true });
   expect(values.has('asmr_onboarding_state_v1')).toBe(false);
   expect(values.has('asmr_onboarding_pending_account_uid')).toBe(false);

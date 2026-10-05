@@ -70,6 +70,19 @@ test('a new account receives its previewed short routine before editing anything
   expect(steps[0]?.name).toBe('Moisturize');
 });
 
+test('the owned basics answer changes the routine after membership unlock', async () => {
+  mockGet.mockResolvedValue({ exists: () => false, data: () => undefined });
+  jest.mocked(OnboardingService.getStarterPreferences).mockResolvedValue({
+    selectedGoals: ['unsure_help_me_decide'],
+    timeCommitment: 'about_2_minutes',
+    ownedBasics: ['none_yet']
+  });
+  const steps = await RoutineService.get();
+  expect(steps.map(step => step.name)).toEqual([
+    'Moisturize when ready', 'Protect outdoors', 'Rinse gently', 'Moisturize when ready'
+  ]);
+});
+
 test('pausing a step is reversible and does not erase past completion data', async () => {
   const routine = [
     { ...STARTER_STEPS[0], paused: true },
