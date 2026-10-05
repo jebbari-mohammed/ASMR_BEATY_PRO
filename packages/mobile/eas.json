@@ -30,7 +30,7 @@
     "production": {},
     "testflight": {
       "ios": {
-        "ascAppId": "6760679807",
+        "ascAppId": "6809052897",
         "groups": ["Owner device QA"]
       }
     }
