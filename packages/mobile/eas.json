@@ -24,6 +24,13 @@
       "environment": "production",
       "credentialsSource": "local",
       "autoIncrement": false
+    },
+    "play-internal": {
+      "distribution": "store",
+      "channel": "production",
+      "environment": "production",
+      "credentialsSource": "remote",
+      "autoIncrement": false
     }
   },
   "submit": {
